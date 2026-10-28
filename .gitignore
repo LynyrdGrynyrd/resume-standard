@@ -1,0 +1,13 @@
+# Public export uses an explicit allowlist; these exclusions also guard future edits.
+node_modules/
+dist/
+.netlify/
+.local/
+test-results/
+playwright-report/
+DECISIONS.md
+.env*
+*.resume.json
+*.pdf
+*.docx
+*.zip
