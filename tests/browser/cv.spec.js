@@ -187,10 +187,11 @@ test('legacy drafts are untouched on load and version-one imports migrate withou
   expect(envelope.data).toEqual(migrated);
 });
 
-test('academic example downloads complete multi-page PDF, Word, Markdown, text and backup locally', async ({ page }, testInfo) => {
+test('academic example downloads complete multi-page PDF, Word, Markdown, text and backup locally', async ({ page, baseURL }, testInfo) => {
   const errors = [], external = [];
+  const appOrigin = new URL(baseURL).origin;
   page.on('pageerror', error => errors.push(error.message));
-  page.on('request', request => { if (!/^(http:\/\/127\.0\.0\.1:4178(?:\/|$)|blob:|data:)/.test(request.url())) external.push(request.url()); });
+  page.on('request', request => { if (!/^(blob:|data:)/.test(request.url()) && new URL(request.url()).origin !== appOrigin) external.push(request.url()); });
   await page.goto('/');
   await mode(page, 'cv').check();
   await page.locator('#example').click();
