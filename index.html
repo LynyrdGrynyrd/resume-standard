@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Your experience, clearly presented. A simple résumé builder with PDF and Word downloads." />
+    <meta name="description" content="Build a résumé or academic CV with PDF and Word downloads. Your details stay on your device." />
     <title>Résumé Standard — Your experience, clearly presented</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231c403b'/%3E%3Ctext x='17' y='47' fill='%23fff' font-size='48' font-family='Georgia'%3Er%3C/text%3E%3C/svg%3E" />
   </head>
@@ -15,16 +15,17 @@
     </header>
     <main>
       <div class="intro">
-        <div><h1>Build your résumé.</h1><p class="intro-copy">Add your details, review the page, then download a PDF or Word document.</p></div>
+        <div><h1 id="document-heading">Build your résumé.</h1><p class="intro-copy">Add your details, review the page, then download a PDF or Word document.</p></div>
+        <fieldset class="document-mode" aria-describedby="mode-help"><legend>Document type</legend><div><label><input type="radio" name="document-mode" value="resume" checked> Résumé</label><label><input type="radio" name="document-mode" value="cv"> Academic CV</label></div><p id="mode-help">Switch formats without losing your entries.</p></fieldset>
       </div>
       <div class="workspace">
         <section class="editor-panel" aria-label="Résumé details">
           <div class="panel-heading"><h2>Your details</h2><div class="editor-tools"><button id="example" class="text-button" type="button">Try an example</button><a id="jump-preview" class="text-button" href="#preview-panel">Preview &amp; download ↓</a></div></div>
           <nav class="steps" aria-label="Résumé sections">
-            <button type="button" data-step="0" aria-current="step"><span>01</span> Basics</button>
-            <button type="button" data-step="1"><span>02</span> Experience</button>
-            <button type="button" data-step="2"><span>03</span> Education</button>
-            <button type="button" data-step="3"><span>04</span> More</button>
+            <button type="button" data-step="0" aria-current="step"><span>01</span><span class="step-name">Basics</span></button>
+            <button type="button" data-step="1"><span>02</span><span class="step-name">Experience</span></button>
+            <button type="button" data-step="2"><span>03</span><span class="step-name">Education</span></button>
+            <button type="button" data-step="3"><span>04</span><span class="step-name">More</span></button>
           </nav>
           <form id="editor" tabindex="-1" novalidate></form>
           <div class="editor-navigation"><button id="back" class="text-button" type="button">← Back</button><button id="next" class="button secondary" type="button">Experience →</button></div>
@@ -44,8 +45,8 @@
           <p id="export-status" role="status" class="export-status"></p>
           <div class="text-exports" aria-label="Text formats"><button id="download-markdown" class="text-button" type="button">Markdown ↓</button><button id="download-text" class="text-button" type="button">Plain text ↓</button><button id="copy-text" class="text-button" type="button">Copy as text</button></div>
           <p id="text-export-status" class="export-status" role="status"></p>
-          <label id="copy-fallback-label" class="field" hidden><span class="field-label">Résumé text to copy</span><textarea id="copy-fallback" readonly rows="8"></textarea></label>
-          <details class="text-preview"><summary>Read résumé as text</summary><div id="preview-text"></div></details>
+          <label id="copy-fallback-label" class="field" hidden><span class="field-label">Document text to copy</span><textarea id="copy-fallback" readonly rows="8"></textarea></label>
+          <details class="text-preview"><summary id="text-preview-label">Read résumé as text</summary><div id="preview-text"></div></details>
         </section>
       </div>
     </main>

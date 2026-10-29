@@ -3,7 +3,7 @@ import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { buildDocx, buildMarkdown, buildText, resumeBlocks } from './documents.js';
 import { buildTaggedPdf } from './tagged-pdf.js';
-import { STORAGE_KEY, emptyResume, newExperience, newRole, newEducation, readDraft, hasContent, filename, exampleResume, serializeResumeFile, parseResumeFile, MAX_RESUME_FILE_BYTES } from './state.js';
+import { STORAGE_KEY, emptyResume, newExperience, newRole, newEducation, readDraft, hasContent, filename, exampleResume, exampleCv, CV_SECTIONS, serializeResumeFile, parseResumeFile, MAX_RESUME_FILE_BYTES } from './state.js';
 import { reviewIssues } from './review.js';
 import { unsupportedCharacters } from './font-check.js';
 import { parseDates, formatDates, dateError, DEGREE_TYPES, parseDegree, formatDegree } from './form-values.js';
@@ -32,7 +32,8 @@ let previewTimer;
 let renderSequence = 0;
 let rendering = false;
 let fileReadSequence = 0;
-const collapsedEmployers = new WeakSet();
+let openEmployer = null;
+let openRole = null;
 
 try {
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -269,7 +270,12 @@ function accomplishmentFields(role) {
 }
 
 function employerSummary(job, index) {
-  return [job.company.trim() || `Employer ${index + 1}`, job.roles.map(role => role.title.trim()).filter(Boolean).join(' / '), job.dates.trim()].filter(Boolean).join(' · ');
+  return [job.company.trim() || `Employer ${index + 1}`, job.dates.trim(), `${job.roles.length} ${job.roles.length === 1 ? 'role' : 'roles'}`].filter(Boolean).join(' · ');
+}
+
+function roleSummary(role, index) {
+  const count = role.bullets.split(/\r?\n/).filter(line => line.trim()).length;
+  return [role.title.trim() || `Role ${index + 1}`, role.dates.trim(), `${count} ${count === 1 ? 'accomplishment' : 'accomplishments'}`].filter(Boolean).join(' · ');
 }
 
 function updateChecks() {
@@ -279,7 +285,8 @@ function updateChecks() {
     const item = element('li');
     item.append(button(issue.message, 'text-button', () => {
       step = issue.step;
-      if (issue.employer !== undefined) collapsedEmployers.delete(data.experience[issue.employer]);
+      if (issue.employer !== undefined) openEmployer = data.experience[issue.employer];
+      if (issue.role !== undefined) openRole = openEmployer.roles[issue.role];
       renderEditor();
       let scope = $('#editor');
       if (issue.employer !== undefined) scope = scope.querySelectorAll('.entry-card')[issue.employer];
@@ -318,8 +325,16 @@ function entryActions(list, index, label) {
 function renderEditor() {
   const editor = $('#editor');
   editor.replaceChildren();
-  const titles = ['Contact details', 'Work experience', 'Education', 'Additional details'];
-  const descriptions = ['Your name is needed to download. Include the contact details you want employers to use.', 'Add your employers, roles, and accomplishments. Most recent first.', 'Add your degrees or qualifications. Leave this section empty if it does not apply.', 'These sections are optional. Empty sections stay off your résumé.'];
+  const cv = data.mode === 'cv';
+  const titles = ['Contact details', cv ? 'Appointments and employment' : 'Work experience', 'Education', cv ? 'Academic sections' : 'Additional details'];
+  const descriptions = ['Your name is needed to download. Include the contact details you want readers to use.', 'Open an employer, then a role, to edit. Add your most recent work first.', 'Add your degrees or qualifications. Include your thesis and advisor in the details if relevant.', cv ? 'Open the sections you need. Empty sections stay off your CV.' : 'These sections are optional. Empty sections stay off your résumé.'];
+  $('#document-heading').textContent = cv ? 'Build your academic CV.' : 'Build your résumé.';
+  $('#mode-help').textContent = cv ? 'Education first, with optional academic sections. Switching keeps every entry.' : 'Your classic résumé format. Switching keeps every entry, including CV sections.';
+  $('#text-preview-label').textContent = cv ? 'Read CV as text' : 'Read résumé as text';
+  $('#preview-panel').setAttribute('aria-label', cv ? 'CV preview' : 'Résumé preview');
+  $('#save-file').textContent = cv ? 'Save CV file' : 'Save résumé file';
+  $('#open-file').textContent = cv ? 'Open résumé or CV file' : 'Open résumé file';
+  document.querySelectorAll('[name=document-mode]').forEach(control => { control.checked = control.value === data.mode; });
   editor.append(element('h3', '', titles[step]), element('p', 'section-description', descriptions[step]));
   if (step === 0) {
     const grid = element('div', 'field-grid');
@@ -329,37 +344,58 @@ function renderEditor() {
       field(data, 'phone', 'Phone', { type: 'tel', placeholder: '(216) 555-0142', autocomplete: 'tel' }),
       field(data, 'location', 'Location', { placeholder: 'Cleveland, OH', autocomplete: 'address-level2' }),
       field(data, 'website', 'LinkedIn or website', { placeholder: 'linkedin.com/in/your-name' }),
-      field(data, 'summary', 'Summary of qualifications', { wide: true, multiline: true, rows: 7, placeholder: 'Describe your experience, strengths, and the work you do best.', hint: 'Optional. A short overview of your experience and strengths.' }),
+      field(data, 'summary', cv ? 'Profile (optional)' : 'Summary of qualifications', { wide: true, multiline: true, rows: 7, placeholder: 'Describe your experience, strengths, and the work you do best.', hint: 'Optional. Shared between your résumé and CV.' }),
     );
     editor.append(grid);
   }
   if (step === 1) {
+    if (!data.experience.includes(openEmployer)) openEmployer = data.experience.find(job => !hasContent(job)) ?? null;
+    if (openEmployer && !openEmployer.roles.includes(openRole)) openRole = openEmployer.roles.find(role => !hasContent(role)) ?? null;
     data.experience.forEach((job, index) => {
       const card = element('fieldset', 'entry-card');
       card.append(element('legend', '', `Employer ${index + 1}`));
-      const details = element('details', 'employer-details'); details.open = !collapsedEmployers.has(job);
+      const details = element('details', 'employer-details'); details.open = openEmployer === job;
       const summary = element('summary', 'employer-summary', employerSummary(job, index));
-      details.addEventListener('toggle', () => { if (details.open) collapsedEmployers.delete(job); else collapsedEmployers.add(job); });
+      details.addEventListener('toggle', () => {
+        if (!details.isConnected) return;
+        if (details.open) {
+          openEmployer = job;
+          editor.querySelectorAll('.employer-details').forEach(other => { if (other !== details) other.open = false; });
+        } else if (openEmployer === job) openEmployer = null;
+      });
       const body = element('div', 'employer-body'); details.append(summary, body); card.append(details);
       body.append(entryActions(data.experience, index, `employer ${index + 1}`));
       body.append(field(job, 'company', 'Employer', { placeholder: 'Company or organization' }), dateField(job, 'dates', 'Employment dates'));
       job.roles.forEach((role, roleIndex) => {
         const roleCard = element('fieldset', 'role-card');
-        roleCard.append(element('legend', '', `Role ${roleIndex + 1}`), entryActions(job.roles, roleIndex, `role ${roleIndex + 1}`));
+        roleCard.append(element('legend', '', `Role ${roleIndex + 1}`));
+        const roleDetails = element('details', 'role-details'); roleDetails.open = openRole === role;
+        const roleHeading = element('summary', 'role-summary', roleSummary(role, roleIndex));
+        roleDetails.addEventListener('toggle', () => {
+          if (!roleDetails.isConnected) return;
+          if (roleDetails.open) {
+            openRole = role;
+            editor.querySelectorAll('.role-details').forEach(other => { if (other !== roleDetails) other.open = false; });
+          } else if (openRole === role) openRole = null;
+        });
+        const roleBody = element('div', 'role-body');
+        roleBody.append(entryActions(job.roles, roleIndex, `role ${roleIndex + 1}`));
         const roleDates = element('details', 'optional-dates'); roleDates.open = Boolean(role.dates);
         roleDates.append(element('summary', '', 'Role dates (optional)'), dateField(role, 'dates', 'Role dates', { currentLabel: 'I currently hold this role' }));
-        roleCard.append(field(role, 'title', 'Job title', { placeholder: 'Operations Manager' }), roleDates, field(role, 'description', 'Role overview (optional)', { multiline: true, rows: 3, placeholder: 'Your scope, responsibilities, or team.' }), accomplishmentFields(role));
+        roleBody.append(field(role, 'title', 'Job title', { placeholder: cv ? 'Assistant Professor, Research Fellow…' : 'Operations Manager' }), roleDates, field(role, 'description', 'Role overview (optional)', { multiline: true, rows: 3, placeholder: 'Your scope, responsibilities, or team.' }), accomplishmentFields(role));
+        roleBody.append(button('Done editing this role', 'button secondary collapse-role', () => { roleDetails.open = false; openRole = null; roleHeading.focus(); }));
+        roleDetails.append(roleHeading, roleBody); roleCard.append(roleDetails);
         body.append(roleCard);
       });
       const addRole = button('+ Add another role here', 'text-button', () => {
-        job.roles.push(newRole()); changed(); renderEditor();
+        const role = newRole(); job.roles.push(role); openEmployer = job; openRole = role; changed(); renderEditor();
         document.querySelectorAll('.entry-card')[index].querySelectorAll('input[name=title]')[job.roles.length - 1].focus();
       });
       addRole.disabled = job.roles.length >= 20;
-      body.append(addRole, button('Done editing this employer', 'button secondary collapse-employer', () => { details.open = false; collapsedEmployers.add(job); summary.focus(); })); editor.append(card);
+      body.append(addRole, button('Done editing this employer', 'button secondary collapse-employer', () => { details.open = false; openEmployer = null; summary.focus(); })); editor.append(card);
     });
     const addJob = button('+ Add employer', 'button add-button', () => {
-      data.experience.push(newExperience()); changed(); renderEditor();
+      const job = newExperience(); data.experience.push(job); openEmployer = job; openRole = job.roles[0]; changed(); renderEditor();
       $('#editor > fieldset:last-of-type input[name=company]').focus();
     });
     addJob.disabled = data.experience.length >= 50; editor.append(addJob);
@@ -377,15 +413,43 @@ function renderEditor() {
     });
     addSchool.disabled = data.education.length >= 30; editor.append(addSchool);
   }
-  if (step === 3) {
+  if (step === 3 && !cv) {
     editor.append(field(data, 'publications', 'Publications and patents', { multiline: true, rows: 8, placeholder: 'Author(s). Title. Publication or patent number. Year.', hint: 'One entry per line. Entries are numbered automatically.' }), field(data, 'skills', 'Technical expertise', { multiline: true, rows: 7, placeholder: 'Operations: Production planning, inventory management\nTools: Excel, Power BI, ERP systems', hint: 'One bullet per line. Group related skills if useful.' }));
   }
+  if (step === 3 && cv) {
+    const academicField = (target, key, label, hint, rows = 5) => {
+      const details = element('details', 'academic-section');
+      const summary = element('summary', '', label);
+      const status = element('span', 'section-state', target[key].trim() ? 'Added' : 'Optional');
+      summary.append(status);
+      details.append(summary, field(target, key, label, { multiline: true, rows, hint, onInput: () => { status.textContent = target[key].trim() ? 'Added' : 'Optional'; } }));
+      editor.append(details);
+    };
+    const hints = {
+      researchInterests: 'Your research areas or questions. Use your own wording.',
+      research: 'One project per line. Include your role, institution, dates, methods and outcomes.',
+      teaching: 'One course or mentoring activity per line. Include institution, role and dates.',
+      grants: 'One award per line. Include funder, project, dates, your role and amount if relevant.',
+      patents: 'One patent per line. Include inventors, title, patent number, year and status.',
+      presentations: 'One talk or poster per line. Include title, event, date and whether invited.',
+      honors: 'One honor per line, with awarding organization and year.',
+      service: 'One committee, editorial, reviewing or outreach role per line, with dates.',
+      affiliations: 'One professional society or membership per line, with role and dates.',
+      references: 'One reference per line. Include name, title, institution and agreed contact details.',
+    };
+    for (const { key, label } of CV_SECTIONS) {
+      if (key === 'patents') academicField(data, 'publications', 'Publications', 'One complete citation per line, most recent first. Include publication status where relevant. Shared with the résumé publications field.', 8);
+      if (key === 'references') academicField(data, 'skills', 'Research Skills', 'One skill group per line. Methods, tools and languages. Shared with résumé technical expertise.');
+      academicField(data.cv, key, label, hints[key], key === 'researchInterests' ? 3 : 5);
+    }
+  }
   document.querySelectorAll('[data-step]').forEach(node => {
+    node.querySelector('.step-name').textContent = ['Basics', cv ? 'Roles' : 'Experience', 'Education', cv ? 'Academic' : 'More'][Number(node.dataset.step)];
     if (Number(node.dataset.step) === step) node.setAttribute('aria-current', 'step');
     else node.removeAttribute('aria-current');
   });
   $('#back').disabled = step === 0;
-  $('#next').textContent = ['Experience →', 'Education →', 'More details →', 'Review & download →'][step];
+  $('#next').textContent = [cv ? 'Appointments →' : 'Experience →', 'Education →', cv ? 'Academic sections →' : 'More details →', 'Review & download →'][step];
 }
 
 function draftConflict() {
@@ -420,6 +484,9 @@ function changed() {
   $('#text-export-status').textContent = '';
   document.querySelectorAll('.employer-summary').forEach((summary, index) => {
     if (data.experience[index]) summary.textContent = employerSummary(data.experience[index], index);
+    summary.parentElement.querySelectorAll('.role-summary').forEach((roleHeading, roleIndex) => {
+      if (data.experience[index]?.roles[roleIndex]) roleHeading.textContent = roleSummary(data.experience[index].roles[roleIndex], roleIndex);
+    });
   });
   $('#download-pdf').disabled = true;
   $('#download-docx').disabled = !data.name.trim() || Boolean(resumeDateError());
@@ -442,7 +509,7 @@ async function showPage() {
   canvas.width = viewport.width;
   canvas.height = viewport.height;
   canvas.setAttribute('role', 'img');
-  canvas.setAttribute('aria-label', `Résumé preview page ${currentPage}. Use Read résumé as text below for accessible text.`);
+  canvas.setAttribute('aria-label', `${data.mode === 'cv' ? 'CV' : 'Résumé'} preview page ${currentPage}. Use the text view below for accessible text.`);
   await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
   if (sequence === renderSequence && activeDocument === pdfDocument) $('#preview').replaceChildren(canvas);
 }
@@ -458,7 +525,7 @@ async function updatePreview() {
     if (dateIssue) {
       renderSequence++;
       $('#preview').replaceChildren(element('p', 'preview-placeholder', 'Check your date range.'));
-      $('#preview-status').textContent = 'Correct the dates to update your résumé.';
+      $('#preview-status').textContent = 'Correct the dates to update your document.';
       $('#export-status').textContent = dateIssue;
       $('#preview').setAttribute('aria-busy', 'false');
       $('#previous-page').disabled = true; $('#next-page').disabled = true;
@@ -494,8 +561,8 @@ async function updatePreview() {
     await showPage();
     if (previous) await previous.loadingTask.destroy();
     if (requestedRevision !== revision) return;
-    $('#preview-status').textContent = !hasContent(data) ? 'Add your details or try the example.' : !data.name.trim() ? 'Enter your name in Basics to enable downloads.' : 'Your PDF, exactly as it will download.';
-    if (!hasContent(data)) $('#preview').append(element('p', 'preview-placeholder preview-empty', 'Your résumé will appear here as you add details.'));
+    $('#preview-status').textContent = !blocks.length ? 'Add your details or try the example.' : !data.name.trim() ? 'Enter your name in Basics to enable downloads.' : 'Your PDF, exactly as it will download.';
+    if (!blocks.length) $('#preview').append(element('p', 'preview-placeholder preview-empty', `Your ${data.mode === 'cv' ? 'CV' : 'résumé'} will appear here as you add details.`));
     $('#preview').setAttribute('aria-busy', 'false');
     $('#download-pdf').disabled = !data.name.trim();
     $('#download-docx').disabled = !data.name.trim();
@@ -515,10 +582,10 @@ async function updatePreview() {
   }
 }
 
-function download(blob, extension, name) {
+function download(blob, extension, name, mode = data.mode) {
   const url = URL.createObjectURL(blob);
   const anchor = element('a');
-  anchor.href = url; anchor.download = filename(name, extension);
+  anchor.href = url; anchor.download = filename(name, extension, mode);
   document.body.append(anchor); anchor.click(); anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
@@ -532,7 +599,7 @@ $('#download-docx').addEventListener('click', async () => {
   $('#download-docx').disabled = true;
   $('#export-status').textContent = 'Preparing your Word document…';
   try {
-    download(await buildDocx(snapshot), 'docx', snapshot.name);
+    download(await buildDocx(snapshot), 'docx', snapshot.name, snapshot.mode);
     $('#export-status').textContent = 'Word document downloaded. Word may adjust page breaks depending on installed fonts.';
   } catch (error) {
     console.error(error);
@@ -556,7 +623,7 @@ $('#copy-text').addEventListener('click', async () => {
     await navigator.clipboard.writeText(text);
     if (copiedRevision !== revision) return;
     $('#copy-fallback-label').hidden = true;
-    $('#text-export-status').textContent = 'Résumé text copied.';
+    $('#text-export-status').textContent = data.mode === 'cv' ? 'CV text copied.' : 'Résumé text copied.';
   } catch {
     if (copiedRevision !== revision) return;
     $('#copy-fallback').value = text;
@@ -567,8 +634,8 @@ $('#copy-text').addEventListener('click', async () => {
 });
 $('#save-file').addEventListener('click', () => {
   try {
-    download(new Blob([serializeResumeFile(data)], { type: 'application/json' }), 'resume.json', data.name);
-    $('#file-status').textContent = 'Résumé file saved. Keep it somewhere private; it contains your details.';
+    download(new Blob([serializeResumeFile(data)], { type: 'application/json' }), data.mode === 'cv' ? 'cv.json' : 'resume.json', data.name);
+    $('#file-status').textContent = `${data.mode === 'cv' ? 'CV' : 'Résumé'} file saved. Keep it somewhere private; it contains your details.`;
   } catch (error) { $('#file-status').textContent = error.message; }
 });
 $('#open-file').addEventListener('click', () => $('#resume-file').click());
@@ -586,9 +653,9 @@ $('#resume-file').addEventListener('change', async event => {
     if ((hasContent(data) || revision !== readRevision) && !confirm('Replace the current résumé with this file? Save a résumé file first if you want to keep your current work.')) {
       $('#file-status').textContent = 'File not opened. Your current résumé was kept.'; return;
     }
-    data = imported; step = 0; currentPage = 1;
+    data = imported; step = 0; currentPage = 1; openEmployer = null; openRole = null;
     renderEditor(); changed(); $('#editor').focus();
-    $('#file-status').textContent = 'Résumé file opened. Nothing was uploaded.';
+    $('#file-status').textContent = `${data.mode === 'cv' ? 'CV' : 'Résumé'} file opened. Nothing was uploaded.`;
   } catch (error) {
     if (sequence === fileReadSequence) $('#file-status').textContent = `${error.message} Your current résumé was kept.`;
   }
@@ -600,6 +667,10 @@ function focusEditor() {
 }
 
 document.querySelectorAll('[data-step]').forEach(node => node.addEventListener('click', () => { step = Number(node.dataset.step); renderEditor(); focusEditor(); }));
+document.querySelectorAll('[name=document-mode]').forEach(control => control.addEventListener('change', () => {
+  if (!control.checked || !['resume', 'cv'].includes(control.value)) return;
+  data.mode = control.value; currentPage = 1; renderEditor(); changed();
+}));
 $('#editor').addEventListener('submit', event => event.preventDefault());
 $('#back').addEventListener('click', () => { step--; renderEditor(); focusEditor(); });
 $('#next').addEventListener('click', () => {
@@ -610,7 +681,7 @@ $('#previous-page').addEventListener('click', () => { currentPage--; showPage().
 $('#next-page').addEventListener('click', () => { currentPage++; showPage().catch(console.error); });
 $('#example').addEventListener('click', () => {
   if (hasContent(data) && !confirm('Replace your current draft with a fictional example? Download your current résumé first if you want to keep it.')) return;
-  data = exampleResume(); step = 0; currentPage = 1; renderEditor(); changed();
+  data = data.mode === 'cv' ? exampleCv() : exampleResume(); step = 0; currentPage = 1; openEmployer = null; openRole = null; renderEditor(); changed();
   $('#save-status').textContent = 'Fictional example loaded. Replace these details with your own.';
 });
 $('#remember').addEventListener('change', () => {
@@ -638,7 +709,8 @@ $('#remember').addEventListener('change', () => {
 $('#clear').addEventListener('click', () => {
   if (!confirm('Clear all résumé details and the saved draft from this browser? This cannot be undone.')) return;
   try { localStorage.removeItem(STORAGE_KEY); } catch { $('#save-status').textContent = 'Could not clear browser storage. Clear this site’s data in browser settings.'; return; }
-  data = emptyResume(); lastSaved = null; saveBlocked = false; step = 0; currentPage = 1;
+  const mode = data.mode; data = emptyResume(); data.mode = mode;
+  lastSaved = null; saveBlocked = false; step = 0; currentPage = 1; openEmployer = null; openRole = null;
   renderEditor(); changed(); $('#editor').focus();
 });
 window.addEventListener('beforeunload', event => {

@@ -55,26 +55,38 @@ test('phone forms remain readable, tappable, and within the viewport in every se
   await page.goto('/');
   await page.getByRole('button', { name: 'Try an example' }).click();
   const failures = [];
+  const inspect = async context => {
+    const issues = await page.evaluate(() => {
+      const found = [];
+      if (document.documentElement.scrollWidth > innerWidth) found.push('horizontal overflow');
+      for (const control of document.querySelectorAll('input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea, button:not(:disabled), summary')) {
+        const rect = control.getBoundingClientRect();
+        if (!rect.width || !rect.height) continue;
+        const label = control.getAttribute('aria-label') || control.name || control.textContent.trim().slice(0, 45) || control.tagName;
+        if (control.matches('input, select, textarea') && parseFloat(getComputedStyle(control).fontSize) < 16) found.push(`${label}: text below 16px`);
+        if (control.matches('button, summary') && rect.height < 44) found.push(`${label}: target below 44px`);
+        if (control.matches('button, summary') && rect.width < 44) found.push(`${label}: target narrower than 44px`);
+      }
+      return found;
+    });
+    failures.push(...issues.map(issue => `${context}: ${issue}`));
+  };
   for (const width of [320, 375]) {
     await page.setViewportSize({ width, height: 812 });
     for (let step = 0; step < 4; step++) {
       await page.locator(`[data-step="${step}"]`).click();
-      for (const details of await page.locator('.employer-details, .optional-dates').all()) {
-        if (!(await details.evaluate(node => node.open))) await details.locator(':scope > summary').click();
-      }
-      const issues = await page.evaluate(() => {
-        const found = [];
-        if (document.documentElement.scrollWidth > innerWidth) found.push('horizontal overflow');
-        for (const control of document.querySelectorAll('input:not([type="checkbox"]):not([type="file"]), select, textarea, button:not(:disabled), summary')) {
-          const rect = control.getBoundingClientRect();
-          if (!rect.width || !rect.height) continue;
-          const label = control.getAttribute('aria-label') || control.name || control.textContent.trim().slice(0, 45) || control.tagName;
-          if (control.matches('input, select, textarea') && parseFloat(getComputedStyle(control).fontSize) < 16) found.push(`${label}: text below 16px`);
-          if (control.matches('button, summary') && rect.height < 44) found.push(`${label}: target below 44px`);
+      await inspect(`${width}px section ${step}`);
+      for (const [employerIndex, employer] of (await page.locator('.employer-details').all()).entries()) {
+        if (!(await employer.evaluate(node => node.open))) await employer.locator(':scope > summary').click();
+        await inspect(`${width}px employer ${employerIndex + 1}`);
+        for (const [roleIndex, role] of (await employer.locator('.role-details').all()).entries()) {
+          if (!(await role.evaluate(node => node.open))) await role.locator(':scope > summary').click();
+          for (const details of await role.locator('.optional-dates').all()) {
+            if (!(await details.evaluate(node => node.open))) await details.locator(':scope > summary').click();
+          }
+          await inspect(`${width}px employer ${employerIndex + 1} role ${roleIndex + 1}`);
         }
-        return found;
-      });
-      failures.push(...issues.map(issue => `${width}px section ${step}: ${issue}`));
+      }
     }
   }
   expect(failures).toEqual([]);

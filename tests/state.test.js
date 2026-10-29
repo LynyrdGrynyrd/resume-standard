@@ -2,6 +2,72 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { emptyResume, exampleResume, readDraft, hasContent, filename, MAX_RESUME_FILE_BYTES, serializeResumeFile, parseResumeFile } from '../src/state.js';
 import { unsupportedCharacters } from '../src/font-check.js';
+import * as state from '../src/state.js';
+
+const legacyDraft = () => ({
+  name: ' Renée García ', phone: '', email: 'renee@example.com', location: 'Example City', website: '',
+  summary: 'First paragraph.\r\nSecond with e\u0301.',
+  experience: [{ company: ' Example Institute ', dates: ' Fall 2021 – today ', roles: [{ title: 'Researcher', dates: '', description: '', bullets: '  First.\r\n\r\n• Second.  ' }] }],
+  education: [{ school: 'Example University', date: 'Expected Spring 2028', degree: 'Custom MSc', details: 'Thesis: exact wording\n' }],
+  publications: 'García, R. A study. 2025.\n', skills: 'Python',
+});
+
+test('legacy drafts and version 1 backups migrate without changing any original strings', () => {
+  const legacy = legacyDraft();
+  const raw = JSON.stringify(legacy);
+  const migrated = readDraft(raw);
+  assert.equal(migrated.mode, 'resume');
+  assert.deepEqual(migrated.cv, state.emptyCv());
+  const { mode, cv, ...original } = migrated;
+  assert.deepEqual(original, legacy);
+  assert.equal(JSON.stringify(legacy), raw);
+  assert.deepEqual(parseResumeFile(JSON.stringify({ format: 'classic-resume', version: 1, data: legacy })), migrated);
+  assert.throws(() => serializeResumeFile(legacy), /invalid or unsupported/);
+  assert.throws(() => parseResumeFile(JSON.stringify({ format: 'classic-resume', version: 2, data: legacy })));
+});
+
+test('academic CV fields, mode and fictional example survive saving and mode changes', () => {
+  const blank = emptyResume();
+  assert.equal(blank.mode, 'resume');
+  blank.mode = 'cv';
+  assert.equal(hasContent(blank), false);
+  assert.deepEqual(Object.keys(blank.cv), ['researchInterests', 'research', 'teaching', 'grants', 'patents', 'presentations', 'honors', 'service', 'affiliations', 'references']);
+  const data = state.exampleCv();
+  assert.equal(data.mode, 'cv');
+  for (const { key } of state.CV_SECTIONS) assert.ok(data.cv[key].trim(), `Fictional CV needs ${key}`);
+  data.cv.research = '  First study.\r\n\nSecond study: e\u0301 and 李.  ';
+  data.cv.references = 'Example Person\nexample@example.com';
+  for (const mode of ['cv', 'resume', 'cv']) {
+    data.mode = mode;
+    assert.deepEqual(readDraft(JSON.stringify(data)), data);
+    assert.deepEqual(parseResumeFile(serializeResumeFile(data)), data);
+  }
+  assert.equal(hasContent({ ...emptyResume(), cv: { ...state.emptyCv(), references: 'Example Person' } }), true);
+  assert.equal(filename('Renée <García>/..', 'pdf', 'cv'), 'Renée García - CV.pdf');
+  assert.equal(filename('', 'docx', 'cv'), 'CV - CV.docx');
+  const another = emptyResume(); blank.cv.research = 'One draft only';
+  assert.equal(another.cv.research, '');
+});
+
+test('current files reject incomplete or mixed schemas, unknown academic fields and mode/version mismatches', () => {
+  for (const mutate of [
+    data => { delete data.mode; }, data => { delete data.cv; }, data => { data.mode = 'academic'; },
+    data => { data.mode = 2; }, data => { data.cv = null; }, data => { data.cv = []; },
+    data => { delete data.cv.research; }, data => { data.cv.research = ['A study']; },
+    data => { data.cv.grants = 'x'.repeat(30001); }, data => { data.cv.extra = 'unknown'; },
+  ]) {
+    const data = emptyResume(); mutate(data);
+    assert.throws(() => readDraft(JSON.stringify(data)));
+    assert.throws(() => serializeResumeFile(data));
+    assert.throws(() => parseResumeFile(JSON.stringify({ format: 'classic-resume', version: 2, data })));
+  }
+  assert.throws(() => parseResumeFile(JSON.stringify({ format: 'classic-resume', version: 1, data: emptyResume() })));
+  const data = emptyResume(); data.cv = Object.assign(Object.create({ inherited: true }), data.cv);
+  assert.throws(() => serializeResumeFile(data));
+  const raw = serializeResumeFile(emptyResume()).replace('"cv":{', '"cv":{"__proto__":{"polluted":true},');
+  assert.throws(() => parseResumeFile(raw));
+  assert.equal({}.polluted, undefined);
+});
 
 test('drafts round-trip Unicode and manual text; bad or oversized structures fail visibly', () => {
   const data = exampleResume();
@@ -37,7 +103,7 @@ test('portable résumé files round-trip exact Unicode, whitespace, multiline bu
   const envelope = JSON.parse(raw);
   assert.deepEqual(Object.keys(envelope), ['format', 'version', 'data']);
   assert.equal(envelope.format, 'classic-resume');
-  assert.equal(envelope.version, 1);
+  assert.equal(envelope.version, 2);
   assert.deepEqual(parseResumeFile(raw), data);
   assert.deepEqual(readDraft(JSON.stringify(data)), data);
   assert.deepEqual(parseResumeFile(serializeResumeFile(emptyResume())), emptyResume());
@@ -51,7 +117,7 @@ test('portable files reject invalid JSON, unsupported envelopes and versions', (
   }
   const file = JSON.parse(serializeResumeFile(emptyResume()));
   for (const changed of [
-    { ...file, format: 'other-app' }, { ...file, version: 2 }, { ...file, version: '1' },
+    { ...file, format: 'other-app' }, { ...file, version: 99 }, { ...file, version: '2' },
     { ...file, extra: [] }, { format: file.format, data: file.data },
     { ...file, data: null },
   ]) assert.throws(() => parseResumeFile(JSON.stringify(changed)));
@@ -80,7 +146,7 @@ test('unknown fields, malformed nested structures and invalid field sizes fail w
     const before = JSON.stringify(data);
     assert.throws(() => readDraft(before));
     assert.throws(() => serializeResumeFile(data));
-    assert.throws(() => parseResumeFile(JSON.stringify({ format: 'classic-resume', version: 1, data })));
+    assert.throws(() => parseResumeFile(JSON.stringify({ format: 'classic-resume', version: 2, data })));
     assert.equal(JSON.stringify(data), before);
   }
   const raw = serializeResumeFile(emptyResume()).replace('"data":{', '"data":{"__proto__":{"polluted":true},');
@@ -95,7 +161,7 @@ test('portable file size limit is symmetric and counts UTF-8 bytes instead of ch
   data.experience = Array.from({ length: 5 }, () => ({
     company: '', dates: '', roles: Array.from({ length: 20 }, () => ({ title: '', dates: '', description: '', bullets: 'é'.repeat(30000) })),
   }));
-  const raw = JSON.stringify({ format: 'classic-resume', version: 1, data });
+  const raw = JSON.stringify({ format: 'classic-resume', version: 2, data });
   assert.ok(raw.length < MAX_RESUME_FILE_BYTES);
   assert.ok(new TextEncoder().encode(raw).length > MAX_RESUME_FILE_BYTES);
   assert.throws(() => serializeResumeFile(data), /5 MiB/);

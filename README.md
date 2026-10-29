@@ -1,6 +1,6 @@
 # Résumé Standard
 
-A manual-entry résumé builder with one classic Garamond template. Fill in the form, preview the actual PDF, and download a PDF, editable Word document, Markdown or plain text. No AI, network uploads, accounts, or server-side résumé storage.
+A manual-entry résumé and academic CV builder with one classic Garamond template. Fill in the form, preview the actual PDF, and download a PDF, editable Word document, Markdown or plain text. No AI, network uploads, accounts, or server-side document storage.
 
 Layout inspired by Phil Costanzo’s résumé template.
 
@@ -27,13 +27,15 @@ Alternatively, run `npm run build` and upload the contents of `dist` through Net
 ## Behavior
 
 - One template: Garamond styling, centered small-cap name between thin rules, underlined employers, italic roles, indented bullets, US Letter.
-- Sections: contact, qualifications, professional experience (multiple roles per employer), academic credentials, publications/patents, technical expertise. Empty sections are omitted. Entries can be added, removed, and reordered.
+- Résumé sections: contact, qualifications, professional experience (multiple roles per employer), academic credentials, publications/patents, technical expertise. Empty sections are omitted. Entries can be added, removed, and reordered.
+- Academic CV mode puts education before appointments and adds optional research interests, research experience, teaching and mentoring, grants and funding, patents, presentations, honors and awards, academic service, professional affiliations, and references. Publications and research skills share their résumé fields. Open the academic sections you need and enter complete entries or citations manually; the app does not infer bibliographic details or verify claims.
+- Switching between Résumé and Academic CV preserves all entries. CV-only sections stay out of résumé exports. Each mode has its own fictional example, document title and download filenames; CV PDFs and Word documents include page numbers.
 - Dates use month pickers or year dropdowns, with current-employment/current-role and expected-graduation checkboxes. Custom date wording remains available. Existing drafts retain their original strings until you edit them. Known reversed ranges block downloads with an error. Separate role dates are collapsed when empty.
 - Education offers conventional degree types plus field of study, or custom wording for any other qualification.
 - Accomplishments have individual fields with add, move and remove buttons. Paste multiple lines to create multiple fields. Up to 200 fields / 30,000 characters per role; oversized pastes are refused without truncation. Existing larger lists retain the original multiline editor.
-- Employers can be collapsed with a company/role/date summary and reopened. A pre-download checklist links to missing names, titles and contact details; it does not demand optional content or block otherwise valid downloads.
-- Save a résumé file (`.resume.json`) to back up or move between devices, then open it in this app. Files use a versioned format and a 5 MiB limit; validation happens before replacement confirmation. Invalid files leave current work intact. These files contain personal details, so store them privately. Opening a file is local and never uploads it.
-- Markdown and plain-text exports use the same résumé content. Copy as text has a selected-text fallback if clipboard access is unavailable. These are additional formats for compatible tools; they are not a promise of application-portal support or ranking gains.
+- Populated employers and roles start collapsed, showing dates and entry counts. Open one employer and role at a time; adding an entry opens it for editing. A pre-download checklist opens the relevant entry and focuses missing names, titles or contact details; it does not demand optional content or block otherwise valid downloads.
+- Save a résumé file (`.resume.json`) or CV file (`.cv.json`) to back up or move between devices, then open it in this app. Both include all entries, even sections hidden in the selected mode. New files use version 2; original version 1 files and browser drafts migrate without changing their text. Files have a 5 MiB limit; validation happens before replacement confirmation. Invalid files leave current work intact. These files contain personal details, so store them privately. Opening a file is local and never uploads it.
+- Markdown and plain-text exports use the same content as the selected document mode. Copy as text has a selected-text fallback if clipboard access is unavailable. These are additional formats for compatible tools; they are not a promise of application-portal support or ranking gains.
 - PDF and preview share the same PDF bytes, with selectable text and automatic pagination. Ordinary accomplishments and citations stay together on a page; entries too long to fit with their headings flow across pages. All PDF fonts are bundled locally. No external font or analytics requests.
 - PDFKit generates real PDF heading, paragraph and list tags with logical reading order, document language and section bookmarks. Decorative rules are artifacts. Word uses semantic heading styles. Tests verify text extraction and tagged content, but this is not PDF/UA certification or screen-reader validation.
 - Word uses native text, paragraphs, and list numbering with Garamond specified. Word's font substitution and pagination can differ from the PDF. Check the Word document before sending.
@@ -50,7 +52,7 @@ npm run build
 npm run test:e2e
 ```
 
-Browser tests use installed Microsoft Edge on Windows. On another OS, change `channel: 'msedge'` in `playwright.config.js` to your installed browser or install Playwright Chromium and remove the channel setting. Tests cover document structure and extraction, manual-entry downloads, long documents, safe file import/backup, clipboard fallback, accomplishment editing, checklist focus, draft failures, injection, mobile layout, and the Netlify content security policy. Visual verification is separate from these assertions.
+Browser tests use installed Microsoft Edge on Windows. On another OS, change `channel: 'msedge'` in `playwright.config.js` to your installed browser or install Playwright Chromium and remove the channel setting. Tests cover document structure and extraction, manual-entry downloads, long documents, CV mode switching, legacy-file migration, safe file import/backup, clipboard fallback, compact experience editing, checklist focus, draft failures, injection, mobile layout, and the Netlify content security policy. Visual verification is separate from these assertions.
 
 ## Structure
 

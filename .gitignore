@@ -8,6 +8,7 @@ playwright-report/
 DECISIONS.md
 .env*
 *.resume.json
+*.cv.json
 *.pdf
 *.docx
 *.zip

@@ -9,6 +9,7 @@ const lines = (value) => text(value).split(/\r?\n/)
 const dated = (value, dates) => [text(value), text(dates) && `(${text(dates)})`].filter(Boolean).join(' ');
 
 export function resumeBlocks(data = {}) {
+  const isCv = data.mode === 'cv';
   const blocks = [];
   const add = (kind, value, extra = {}) => {
     if (value) blocks.push({ kind, text: value, ...extra });
@@ -18,7 +19,7 @@ export function resumeBlocks(data = {}) {
   };
   add('contact', [data.phone, data.email, data.location, data.website].map((v) => text(v)).filter(Boolean).join(' | '));
   add('name', text(data.name));
-  if (text(data.summary)) section('Summary of Qualifications', [{ kind: 'description', text: text(data.summary), indent: 0 }]);
+  if (text(data.summary)) section(isCv ? 'Profile' : 'Summary of Qualifications', [{ kind: 'description', text: text(data.summary), indent: 0 }]);
 
   const experience = [];
   for (const job of data.experience ?? []) {
@@ -35,8 +36,6 @@ export function resumeBlocks(data = {}) {
     if (company) experience.push({ kind: 'company', text: company, keepWithNext: contents.length > 0, gapBefore: experience.length > 0 });
     experience.push(...contents);
   }
-  section('Professional Experience', experience);
-
   const education = [];
   for (const item of data.education ?? []) {
     const contents = [];
@@ -46,9 +45,22 @@ export function resumeBlocks(data = {}) {
     if (school) education.push({ kind: 'company', text: school, keepWithNext: contents.length > 0, gapBefore: education.length > 0 });
     education.push(...contents);
   }
-  section('Academic Credentials', education);
-  section('Publications and Patents', lines(data.publications).map((value) => ({ kind: 'publication', text: value })));
-  section('Technical Expertise', lines(data.skills).map((value) => ({ kind: 'skill', text: value })));
+  const publications = lines(data.publications).map((value) => ({ kind: 'publication', text: value }));
+  const skills = lines(data.skills).map((value) => ({ kind: 'skill', text: value }));
+  if (isCv) {
+    section('Education', education);
+    section('Academic and Professional Appointments', experience);
+    for (const { key, label } of CV_SECTIONS) {
+      if (key === 'references') section('Research Skills', skills);
+      section(label, lines(data.cv?.[key]).map(value => ({ kind: 'description', text: value, indent: 0 })));
+      if (key === 'grants') section('Publications', publications);
+    }
+  } else {
+    section('Professional Experience', experience);
+    section('Academic Credentials', education);
+    section('Publications and Patents', publications);
+    section('Technical Expertise', skills);
+  }
   return blocks;
 }
 
@@ -77,7 +89,9 @@ export function buildMarkdown(data) {
 }
 
 export async function buildDocx(data) {
-  const { AlignmentType, BorderStyle, Document, HeadingLevel, LevelFormat, Packer, Paragraph, TextRun } = await import('docx');
+  const { AlignmentType, BorderStyle, Document, Footer, HeadingLevel, LevelFormat, Packer, PageNumber, Paragraph, TextRun } = await import('docx');
+  const isCv = data.mode === 'cv';
+  const documentType = isCv ? 'Curriculum Vitae' : 'Résumé';
   const rule = { style: BorderStyle.SINGLE, size: 4, color: '000000', space: 1 };
   const children = resumeBlocks(data).map((block, index) => {
     const options = {
@@ -137,7 +151,7 @@ export async function buildDocx(data) {
   });
   const document = new Document({
     creator: 'Résumé Standard',
-    title: text(data.name) ? `${text(data.name)} — Résumé` : 'Résumé',
+    title: text(data.name) ? `${text(data.name)} — ${documentType}` : documentType,
     styles: { default: {
       document: {
         run: { font: 'Garamond', size: 22, color: '000000' },
@@ -156,8 +170,12 @@ export async function buildDocx(data) {
     ] },
     sections: [{ properties: { page: {
       size: { width: 12240, height: 15840 },
-      margin: { top: 720, right: 1008, bottom: 720, left: 1152 },
-    } }, children }],
+      margin: { top: 720, right: 1008, bottom: 720, left: 1152, ...(isCv ? { footer: 360 } : {}) },
+    } }, ...(isCv ? { footers: { default: new Footer({ children: [new Paragraph({
+      alignment: AlignmentType.CENTER, spacing: { after: 0 },
+      children: [new TextRun({ font: 'Garamond', size: 18, children: ['Page ', PageNumber.CURRENT, ' of ', PageNumber.TOTAL_PAGES] })],
+    })] }) } } : {}), children }],
   });
   return Packer.toBlob(document);
 }
+import { CV_SECTIONS } from './state.js';

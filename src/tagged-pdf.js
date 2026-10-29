@@ -22,12 +22,15 @@ function style(block) {
 }
 
 export async function buildTaggedPdf(data, fontBuffers) {
+  const isCv = data.mode === 'cv';
+  const documentType = isCv ? 'Curriculum Vitae' : 'Résumé';
   const blocks = resumeBlocks(data);
   const name = blocks.find(block => block.kind === 'name')?.text || '';
   const doc = new PDFDocument({
     size: 'LETTER', margins: { top: TOP, right: RIGHT, bottom: BOTTOM, left: LEFT },
     font: null, pdfVersion: '1.7', tagged: true, lang: 'en-US', displayTitle: true,
-    info: { Title: name ? `${name} — Résumé` : 'Résumé', Creator: 'Résumé Standard' },
+    bufferPages: isCv,
+    info: { Title: name ? `${name} — ${documentType}` : documentType, Creator: 'Résumé Standard' },
   });
   for (const key of ['normal', 'bold', 'italics', 'bolditalics']) {
     if (!fontBuffers?.[key]) throw new Error(`Missing résumé font: ${key}`);
@@ -98,6 +101,18 @@ export async function buildTaggedPdf(data, fontBuffers) {
     }
     if (block.kind === 'name') { doc.y += 4; rule(); doc.y -= 4; }
     doc.y += settings.after;
+  }
+  if (isCv) {
+    const { start, count } = doc.bufferedPageRange();
+    for (let index = start; index < start + count; index++) {
+      doc.switchToPage(index);
+      doc.markContent('Artifact', { type: 'Pagination', attached: ['Bottom'] });
+      doc.font('normal').fontSize(9);
+      const label = `Page ${index + 1} of ${count}`;
+      // Supplying width invokes PDFKit's page wrapper even with lineBreak disabled.
+      doc.text(label, LEFT + (WIDTH - doc.widthOfString(label)) / 2, 762, { lineBreak: false });
+      doc.endMarkedContent();
+    }
   }
   doc.end();
   return output;

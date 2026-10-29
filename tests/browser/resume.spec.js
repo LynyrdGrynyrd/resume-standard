@@ -285,6 +285,8 @@ test('date pickers, current-role checkboxes and degree dropdowns reach both down
   for (const value of expected) expect(xml).toContain(value);
   await page.reload();
   await page.getByRole('button', { name: '02 Experience' }).click();
+  await page.locator('.employer-summary').click();
+  await page.locator('.role-summary').click();
   await expect(employment.getByLabel('Start date')).toHaveValue('2021-05');
   await expect(employment.getByLabel('I currently work here')).toBeChecked();
   await expect(role.getByLabel('Date format')).toHaveValue('year');
@@ -326,6 +328,8 @@ test('legacy drafts and custom wording are not rewritten by visiting the guided 
   await page.addInitScript(value => localStorage.setItem('classic-resume-v1', value), JSON.stringify(draft));
   await page.goto('/');
   await page.getByRole('button', { name: '02 Experience' }).click();
+  await page.locator('.employer-summary').click();
+  await page.locator('.role-summary').click();
   const employment = page.getByRole('group', { name: 'Employment dates', exact: true });
   await expect(employment.getByLabel('Start date')).toHaveValue('2024-05');
   const role = page.getByRole('group', { name: 'Role dates', exact: true });
@@ -352,6 +356,7 @@ test('keyboard date-format changes ask before removing months and cancellation p
   await page.addInitScript(value => localStorage.setItem('classic-resume-v1', value), JSON.stringify(draft));
   await page.goto('/');
   await page.getByRole('button', { name: '02 Experience' }).click();
+  await page.locator('.employer-summary').click();
   const employment = page.getByRole('group', { name: 'Employment dates', exact: true });
   const format = employment.getByLabel('Date format');
   page.once('dialog', dialog => dialog.dismiss());

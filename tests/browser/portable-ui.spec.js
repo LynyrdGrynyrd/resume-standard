@@ -53,6 +53,9 @@ test('invalid, unsupported and oversized files cannot replace the current résum
     ['{broken', 'not valid JSON'],
     [JSON.stringify({ ...envelope, version: 999 }), 'version is not supported'],
     [JSON.stringify({ ...envelope, data: { ...envelope.data, surprise: { nested: ['unknown'] } } }), 'invalid or unsupported fields'],
+    [JSON.stringify({ ...envelope, data: { ...envelope.data, mode: 'academic' } }), 'invalid or unsupported fields'],
+    [JSON.stringify({ ...envelope, data: { ...envelope.data, cv: { ...envelope.data.cv, teaching: ['wrong type'] } } }), 'invalid or unsupported fields'],
+    [JSON.stringify({ ...envelope, data: { ...envelope.data, cv: { ...envelope.data.cv, unknown: 'Not a supported section' } } }), 'invalid or unsupported fields'],
     [' '.repeat(MAX_RESUME_FILE_BYTES + 1), 'too large'],
   ]) {
     await page.locator('#resume-file').setInputFiles(file(raw));
@@ -128,7 +131,7 @@ test('denied clipboard access offers the full selected plain text instead of los
   await page.getByLabel('Summary of qualifications').fill('Every word should remain available.');
   await page.getByRole('button', { name: 'Copy as text', exact: true }).click();
   await expect(page.locator('#text-export-status')).toContainText('Clipboard access is unavailable');
-  const fallback = page.getByLabel('Résumé text to copy');
+  const fallback = page.getByLabel('Document text to copy');
   await expect(fallback).toBeVisible(); await expect(fallback).toBeFocused();
   const text = await fallback.inputValue();
   expect(text).toContain('Manual Copy'); expect(text).toContain('Every word should remain available.');

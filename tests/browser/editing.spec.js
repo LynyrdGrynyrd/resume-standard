@@ -27,6 +27,8 @@ test('accomplishments paste into separate fields, reorder and remove without los
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('classic-resume-v1')));
   expect(saved.experience[0].roles[0].bullets).toBe('Third result.\nSecond result.\nNew final result.');
   await page.reload(); await page.getByRole('button', { name: '02 Experience' }).click();
+  await page.locator('.employer-summary').click();
+  await page.locator('.role-summary').click();
   await expect(page.getByLabel('Accomplishment 3', { exact: true })).toHaveValue('New final result.');
 });
 
@@ -48,6 +50,9 @@ test('employer collapse and checklist links preserve work and focus the missing 
   await page.getByLabel('Full name & credentials').fill('Taylor');
   await page.getByRole('button', { name: '02 Experience' }).click();
   await page.getByLabel('Accomplishment 1', { exact: true }).fill('Improved delivery.');
+  await page.getByRole('button', { name: 'Done editing this role' }).click();
+  await expect(page.locator('.role-summary')).toBeFocused();
+  await expect(page.getByLabel('Job title', { exact: true })).toBeHidden();
   await page.getByRole('button', { name: 'Done editing this employer' }).click();
   await expect(page.locator('.employer-summary')).toBeFocused();
   await expect(page.getByLabel('Employer', { exact: true })).toBeHidden();
@@ -64,7 +69,9 @@ test('employer collapse and checklist links preserve work and focus the missing 
   await expect(page.locator('#check-count')).toContainText('no missing essentials');
   await page.getByRole('button', { name: '02 Experience' }).click();
   await page.getByRole('button', { name: 'Done editing this employer' }).click();
-  await expect(page.locator('.employer-summary')).toContainText('Example Company · Director');
+  await expect(page.locator('.employer-summary')).toContainText('Example Company');
+  await expect(page.locator('.employer-summary')).toContainText('1 role');
+  await expect(page.locator('.role-summary')).toContainText('Director');
   await page.getByRole('button', { name: '03 Education' }).click();
   await page.getByRole('button', { name: '02 Experience' }).click();
   await expect(page.getByLabel('Employer', { exact: true })).toBeHidden();
@@ -77,6 +84,8 @@ test('opening legacy bullets does not rewrite their whitespace or line endings',
   const data = emptyResume(); data.name = 'Legacy'; data.experience[0].roles[0].bullets = '  First.\r\n\r\n• Second.  ';
   await page.addInitScript(value => localStorage.setItem('classic-resume-v1', value), JSON.stringify(data));
   await page.goto('/'); await page.getByRole('button', { name: '02 Experience' }).click();
+  await page.locator('.employer-summary').click();
+  await page.locator('.role-summary').click();
   await expect(page.getByLabel('Accomplishment 1', { exact: true })).toHaveValue('  First.');
   await page.getByLabel('Employer', { exact: true }).fill('Example');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('classic-resume-v1')).experience[0].roles[0].bullets)).toBe(data.experience[0].roles[0].bullets);
