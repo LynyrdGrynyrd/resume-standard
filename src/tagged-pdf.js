@@ -38,7 +38,7 @@ export async function buildTaggedPdf(data, fontBuffers) {
   }
   const output = toBlob(doc);
   const root = doc.struct('Document'); doc.addStructure(root);
-  doc.y = TOP + (['contact', 'name'].includes(blocks[0]?.kind) ? 48 : 0);
+  doc.y = TOP;
   let list, listKind, publication = 0, reservedThrough = -1;
   const setFont = settings => doc.font(settings.font).fontSize(settings.size);
   const layout = blocks.map(block => {

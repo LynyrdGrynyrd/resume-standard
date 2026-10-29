@@ -90,6 +90,24 @@ test('body text keeps its 11pt size with the original template line spacing', as
   assert.ok(Math.abs(baselineGap - 12.32) < 0.05, `Expected 12.32pt body leading; got ${baselineGap}`);
 });
 
+test('resume and CV headers start at the half-inch top margin without an extra blank band', async () => {
+  for (const mode of ['resume', 'cv']) {
+    for (const contact of [true, false]) {
+      const data = { name: 'Header Placement', mode, ...(contact ? { email: 'header@example.com' } : {}) };
+      const blob = await buildTaggedPdf(data, fonts);
+      const pdf = await getDocument({ data: new Uint8Array(await blob.arrayBuffer()), useSystemFonts: false }).promise;
+      try {
+        const content = await (await pdf.getPage(1)).getTextContent();
+        const first = content.items.find(item => item.str?.trim());
+        assert.equal(first.str, contact ? data.email : data.name);
+        const baselineFromTop = 792 - first.transform[5];
+        assert.ok(baselineFromTop >= 36 && baselineFromTop <= 36 + first.transform[0] * 1.5,
+          `${mode}, contact=${contact}: first baseline ${baselineFromTop}pt leaves excess space above the half-inch margin`);
+      } finally { await pdf.loadingTask.destroy(); }
+    }
+  }
+});
+
 test('justified text stays inside the template right margin across word boundaries', async () => {
   const summary = 'A V '.repeat(200).trim();
   const result = await inspect({ summary });
