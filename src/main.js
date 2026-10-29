@@ -34,6 +34,7 @@ let rendering = false;
 let fileReadSequence = 0;
 let openEmployer = null;
 let openRole = null;
+let openEducation = null;
 
 try {
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -278,6 +279,10 @@ function roleSummary(role, index) {
   return [role.title.trim() || `Role ${index + 1}`, role.dates.trim(), `${count} ${count === 1 ? 'accomplishment' : 'accomplishments'}`].filter(Boolean).join(' · ');
 }
 
+function educationSummary(school, index) {
+  return [school.school.trim() || `Education ${index + 1}`, school.degree.trim(), school.date.trim()].filter(Boolean).join(' · ');
+}
+
 function updateChecks() {
   const issues = reviewIssues(data);
   $('#check-count').textContent = issues.length ? `— ${issues.length} ${issues.length === 1 ? 'detail' : 'details'} to review` : '— no missing essentials';
@@ -287,6 +292,7 @@ function updateChecks() {
       step = issue.step;
       if (issue.employer !== undefined) openEmployer = data.experience[issue.employer];
       if (issue.role !== undefined) openRole = openEmployer.roles[issue.role];
+      if (issue.education !== undefined) openEducation = data.education[issue.education];
       renderEditor();
       let scope = $('#editor');
       if (issue.employer !== undefined) scope = scope.querySelectorAll('.entry-card')[issue.employer];
@@ -401,14 +407,28 @@ function renderEditor() {
     addJob.disabled = data.experience.length >= 50; editor.append(addJob);
   }
   if (step === 2) {
+    if (!data.education.includes(openEducation)) openEducation = data.education.find(school => !hasContent(school)) ?? null;
     data.education.forEach((school, index) => {
       const card = element('fieldset', 'entry-card');
-      card.append(element('legend', '', `Education ${index + 1}`), entryActions(data.education, index, `education ${index + 1}`));
-      card.append(field(school, 'school', 'School or institution', { placeholder: 'University name' }), degreeField(school), dateField(school, 'date', 'Graduation', { range: false }), field(school, 'details', 'Additional details (optional)', { multiline: true, placeholder: 'Concentration, honors, thesis, or activities', hint: 'One bullet per line.' }));
+      card.append(element('legend', '', `Education ${index + 1}`));
+      const details = element('details', 'education-details'); details.open = openEducation === school;
+      const summary = element('summary', 'education-summary', educationSummary(school, index));
+      details.addEventListener('toggle', () => {
+        if (!details.isConnected) return;
+        if (details.open) {
+          openEducation = school;
+          editor.querySelectorAll('.education-details').forEach(other => { if (other !== details) other.open = false; });
+        } else if (openEducation === school) openEducation = null;
+      });
+      const body = element('div', 'education-body');
+      body.append(entryActions(data.education, index, `education ${index + 1}`));
+      body.append(field(school, 'school', 'School or institution', { placeholder: 'University name' }), degreeField(school), dateField(school, 'date', 'Graduation', { range: false }), field(school, 'details', 'Additional details (optional)', { multiline: true, placeholder: 'Concentration, honors, thesis, or activities', hint: 'One bullet per line.' }));
+      body.append(button('Done editing this entry', 'button secondary collapse-education', () => { details.open = false; openEducation = null; summary.focus(); }));
+      details.append(summary, body); card.append(details);
       editor.append(card);
     });
     const addSchool = button('+ Add education', 'button add-button', () => {
-      data.education.push(newEducation()); changed(); renderEditor();
+      const school = newEducation(); data.education.push(school); openEducation = school; changed(); renderEditor();
       $('#editor > fieldset:last-of-type input[name=school]').focus();
     });
     addSchool.disabled = data.education.length >= 30; editor.append(addSchool);
@@ -487,6 +507,9 @@ function changed() {
     summary.parentElement.querySelectorAll('.role-summary').forEach((roleHeading, roleIndex) => {
       if (data.experience[index]?.roles[roleIndex]) roleHeading.textContent = roleSummary(data.experience[index].roles[roleIndex], roleIndex);
     });
+  });
+  document.querySelectorAll('.education-summary').forEach((summary, index) => {
+    if (data.education[index]) summary.textContent = educationSummary(data.education[index], index);
   });
   $('#download-pdf').disabled = true;
   $('#download-docx').disabled = !data.name.trim() || Boolean(resumeDateError());
@@ -653,7 +676,7 @@ $('#resume-file').addEventListener('change', async event => {
     if ((hasContent(data) || revision !== readRevision) && !confirm('Replace the current résumé with this file? Save a résumé file first if you want to keep your current work.')) {
       $('#file-status').textContent = 'File not opened. Your current résumé was kept.'; return;
     }
-    data = imported; step = 0; currentPage = 1; openEmployer = null; openRole = null;
+    data = imported; step = 0; currentPage = 1; openEmployer = null; openRole = null; openEducation = null;
     renderEditor(); changed(); $('#editor').focus();
     $('#file-status').textContent = `${data.mode === 'cv' ? 'CV' : 'Résumé'} file opened. Nothing was uploaded.`;
   } catch (error) {
@@ -681,7 +704,7 @@ $('#previous-page').addEventListener('click', () => { currentPage--; showPage().
 $('#next-page').addEventListener('click', () => { currentPage++; showPage().catch(console.error); });
 $('#example').addEventListener('click', () => {
   if (hasContent(data) && !confirm('Replace your current draft with a fictional example? Download your current résumé first if you want to keep it.')) return;
-  data = data.mode === 'cv' ? exampleCv() : exampleResume(); step = 0; currentPage = 1; openEmployer = null; openRole = null; renderEditor(); changed();
+  data = data.mode === 'cv' ? exampleCv() : exampleResume(); step = 0; currentPage = 1; openEmployer = null; openRole = null; openEducation = null; renderEditor(); changed();
   $('#save-status').textContent = 'Fictional example loaded. Replace these details with your own.';
 });
 $('#remember').addEventListener('change', () => {
@@ -710,7 +733,7 @@ $('#clear').addEventListener('click', () => {
   if (!confirm('Clear all résumé details and the saved draft from this browser? This cannot be undone.')) return;
   try { localStorage.removeItem(STORAGE_KEY); } catch { $('#save-status').textContent = 'Could not clear browser storage. Clear this site’s data in browser settings.'; return; }
   const mode = data.mode; data = emptyResume(); data.mode = mode;
-  lastSaved = null; saveBlocked = false; step = 0; currentPage = 1; openEmployer = null; openRole = null;
+  lastSaved = null; saveBlocked = false; step = 0; currentPage = 1; openEmployer = null; openRole = null; openEducation = null;
   renderEditor(); changed(); $('#editor').focus();
 });
 window.addEventListener('beforeunload', event => {

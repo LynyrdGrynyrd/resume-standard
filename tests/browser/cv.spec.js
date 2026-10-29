@@ -260,6 +260,19 @@ test('CV sections are labelled, keyboard reachable and readable at narrow and wi
   await mode(page, 'cv').check();
   await page.locator('#example').click();
   const failures = [];
+  const inspect = () => page.evaluate(() => {
+    const found = [];
+    if (document.documentElement.scrollWidth > innerWidth) found.push('horizontal overflow');
+    for (const node of document.querySelectorAll('#editor input:not([type="checkbox"]):not([type="radio"]), #editor select, #editor textarea, button:not(:disabled), summary, .document-mode label')) {
+      const rect = node.getBoundingClientRect();
+      if (!rect.width || !rect.height) continue;
+      const label = node.name || node.getAttribute('aria-label') || node.textContent.trim().slice(0, 40);
+      if (node.matches('input, select, textarea') && parseFloat(getComputedStyle(node).fontSize) < 16) found.push(`${label}: text below 16px`);
+      if (node.matches('button, summary, label') && rect.height < 44) found.push(`${label}: target below 44px`);
+      if (node.matches('button, summary, label') && rect.width < 44) found.push(`${label}: target narrower than 44px`);
+    }
+    return found;
+  });
   for (const width of [320, 375, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     for (let step = 0; step < 4; step++) {
@@ -276,20 +289,12 @@ test('CV sections are labelled, keyboard reachable and readable at narrow and wi
         }
         for (const key of ['publications', 'skills']) await openDetails(page.locator('.academic-section').filter({ has: page.locator(`textarea[name="${key}"]`) }));
       }
-      const issues = await page.evaluate(() => {
-        const found = [];
-        if (document.documentElement.scrollWidth > innerWidth) found.push('horizontal overflow');
-        for (const node of document.querySelectorAll('#editor input:not([type="checkbox"]):not([type="radio"]), #editor select, #editor textarea, button:not(:disabled), summary, .document-mode label')) {
-          const rect = node.getBoundingClientRect();
-          if (!rect.width || !rect.height) continue;
-          const label = node.name || node.getAttribute('aria-label') || node.textContent.trim().slice(0, 40);
-          if (node.matches('input, select, textarea') && parseFloat(getComputedStyle(node).fontSize) < 16) found.push(`${label}: text below 16px`);
-          if (node.matches('button, summary, label') && rect.height < 44) found.push(`${label}: target below 44px`);
-          if (node.matches('button, summary, label') && rect.width < 44) found.push(`${label}: target narrower than 44px`);
-        }
-        return found;
-      });
+      const issues = await inspect();
       failures.push(...issues.map(issue => `${width}px section ${step}: ${issue}`));
+      for (const [index, school] of (await page.locator('.education-details').all()).entries()) {
+        await openDetails(school);
+        failures.push(...(await inspect()).map(issue => `${width}px education ${index + 1}: ${issue}`));
+      }
       if (step === 3 && [375, 1440].includes(width)) await page.screenshot({ path: testInfo.outputPath(`academic-${width}.png`), fullPage: true });
     }
   }

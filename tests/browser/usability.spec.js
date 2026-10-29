@@ -76,6 +76,10 @@ test('phone forms remain readable, tappable, and within the viewport in every se
     for (let step = 0; step < 4; step++) {
       await page.locator(`[data-step="${step}"]`).click();
       await inspect(`${width}px section ${step}`);
+      for (const [schoolIndex, school] of (await page.locator('.education-details').all()).entries()) {
+        if (!(await school.evaluate(node => node.open))) await school.locator(':scope > summary').click();
+        await inspect(`${width}px education ${schoolIndex + 1}`);
+      }
       for (const [employerIndex, employer] of (await page.locator('.employer-details').all()).entries()) {
         if (!(await employer.evaluate(node => node.open))) await employer.locator(':scope > summary').click();
         await inspect(`${width}px employer ${employerIndex + 1}`);

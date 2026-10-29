@@ -292,6 +292,7 @@ test('date pickers, current-role checkboxes and degree dropdowns reach both down
   await expect(role.getByLabel('Date format')).toHaveValue('year');
   await page.screenshot({ path: testInfo.outputPath('experience-desktop.png'), fullPage: true });
   await page.getByRole('button', { name: '03 Education' }).click();
+  await page.locator('.education-summary').click();
   await expect(page.getByLabel('Degree type')).toHaveValue('Ph.D.');
   await expect(graduation.getByLabel('Expected graduation')).toBeChecked();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -338,6 +339,7 @@ test('legacy drafts and custom wording are not rewritten by visiting the guided 
   await role.getByLabel('Date format').selectOption('month');
   await expect(role.getByLabel('Date format')).toHaveValue('custom');
   await page.getByRole('button', { name: '03 Education' }).click();
+  await page.locator('.education-summary').click();
   await expect(page.getByLabel('Degree type')).toHaveValue('custom');
   await expect(page.getByLabel('Degree or qualification')).toHaveValue(draft.education[0].degree);
   page.once('dialog', dialog => dialog.dismiss());
