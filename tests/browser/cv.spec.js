@@ -135,12 +135,14 @@ test('resume and academic modes retain every field through editing, switching, r
   expect(await draft(page)).toEqual(data);
   await mode(page, 'resume').check();
   await expect(page.locator('.academic-section')).toHaveCount(0);
-  await expect(page.getByLabel('Publications and patents')).toHaveValue(data.publications);
+  await expect(page.getByLabel('Publications')).toHaveValue(data.publications);
+  await expect(page.getByLabel('Patents')).toHaveValue(data.cv.patents);
   await expect(page.getByLabel('Technical expertise')).toHaveValue(data.skills);
   expect(await draft(page)).toEqual({ ...data, mode: 'resume' });
   const resumeText = await downloadFile(page, testInfo, '#download-text', 'resume.txt');
   const resumeOutput = await readFile(resumeText.path, 'utf8');
-  for (const [key] of academicFields) expect(resumeOutput).not.toContain(`Second entry for ${key}.`);
+  for (const [key] of academicFields.filter(([key]) => key !== 'patents')) expect(resumeOutput).not.toContain(`Second entry for ${key}.`);
+  expect(resumeOutput).toContain('Second entry for patents.');
   expect(resumeOutput).toContain(data.experience[0].company);
   await mode(page, 'cv').check();
   await page.reload();

@@ -1,14 +1,11 @@
 import './style.css';
-import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { buildDocx, buildMarkdown, buildText, resumeBlocks } from './documents.js';
-import { buildTaggedPdf } from './tagged-pdf.js';
 import { STORAGE_KEY, emptyResume, newExperience, newRole, newEducation, readDraft, hasContent, filename, exampleResume, exampleCv, CV_SECTIONS, serializeResumeFile, parseResumeFile, MAX_RESUME_FILE_BYTES } from './state.js';
 import { reviewIssues } from './review.js';
 import { unsupportedCharacters } from './font-check.js';
 import { parseDates, formatDates, dateError, DEGREE_TYPES, parseDegree, formatDegree } from './form-values.js';
 
-pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 let fontPromise;
 function loadFonts() {
   return fontPromise ??= Promise.all(Object.entries({ normal: 'Regular', bold: 'Bold', italics: 'Italic', bolditalics: 'BoldItalic' }).map(async ([key, name]) => {
@@ -35,6 +32,7 @@ let fileReadSequence = 0;
 let openEmployer = null;
 let openRole = null;
 let openEducation = null;
+let fieldSequence = 0;
 
 try {
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -62,10 +60,15 @@ function button(text, className, action) {
 
 function field(target, key, label, options = {}) {
   const wrapper = element('label', `field ${options.wide ? 'wide' : ''}`);
-  wrapper.append(element('span', 'field-label', label));
+  const title = element('span', 'field-label', label);
+  wrapper.append(title);
   const control = element(options.multiline ? 'textarea' : 'input');
+  control.id = `field-${++fieldSequence}`;
+  title.id = `${control.id}-label`;
+  control.setAttribute('aria-labelledby', title.id);
   control.value = target[key];
   control.name = key;
+  control.required = Boolean(options.required);
   control.maxLength = options.multiline ? 30000 : 500;
   const pasteError = element('span', 'field-hint');
   pasteError.setAttribute('role', 'alert');
@@ -86,7 +89,12 @@ function field(target, key, label, options = {}) {
   control.addEventListener('input', () => { pasteError.hidden = true; target[key] = control.value; options.onInput?.(); changed(); });
   wrapper.append(control);
   wrapper.append(pasteError);
-  if (options.hint) wrapper.append(element('span', 'field-hint', options.hint));
+  if (options.hint) {
+    const hint = element('span', 'field-hint', options.hint);
+    hint.id = `${control.id}-hint`;
+    control.setAttribute('aria-describedby', hint.id);
+    wrapper.append(hint);
+  }
   return wrapper;
 }
 
@@ -115,10 +123,23 @@ function dateField(target, key, title, { range = true, currentLabel = 'I current
   const body = element('div'); group.append(body);
   let parts = parseDates(target[key], { range });
   const error = element('p', 'date-error'); error.setAttribute('role', 'alert');
-  const showError = () => { error.textContent = dateError(target[key], { range }); error.hidden = !error.textContent; };
+  error.id = `date-error-${++fieldSequence}`;
+  let dateControls = [];
+  const showError = (message = dateError(target[key], { range })) => {
+    error.textContent = message; error.hidden = !message;
+    for (const control of dateControls) {
+      const invalid = Boolean(message) && !control.disabled;
+      control.setAttribute('aria-invalid', String(invalid));
+      const descriptions = (control.getAttribute('aria-describedby') || '').split(' ').filter(id => id && id !== error.id);
+      if (invalid) descriptions.push(error.id);
+      if (descriptions.length) control.setAttribute('aria-describedby', descriptions.join(' '));
+      else control.removeAttribute('aria-describedby');
+    }
+  };
   const commit = () => { target[key] = formatDates(parts, { range }); showError(); changed(); };
   function renderDates() {
     body.replaceChildren();
+    dateControls = [];
     body.append(selectField('Date format', [['month', 'Month and year'], ['year', 'Year only'], ['custom', 'Custom text']], parts.format, format => {
       const old = parseDates(target[key], { range });
       if (format === 'year' && old.format === 'month' && (old.start || old.end) && !confirm('Switch to year only and remove the months from these dates?')) { renderDates(); body.querySelector('select').focus(); return; }
@@ -133,24 +154,29 @@ function dateField(target, key, title, { range = true, currentLabel = 'I current
       renderDates(); body.querySelector('select').focus();
     }));
     if (parts.format === 'custom') {
-      body.append(field(target, key, 'Dates as written', { placeholder: range ? '2021 – Present' : 'Expected Fall 2027', hint: 'Use your own wording. It will appear as written.', onInput: showError }));
+      const custom = field(target, key, 'Dates as written', { placeholder: range ? '2021 – Present' : 'Expected Fall 2027', hint: 'Use your own wording. It will appear as written.', onInput: () => showError() });
+      dateControls.push(custom.querySelector('input'));
+      body.append(custom);
     } else {
       const grid = element('div', 'field-grid');
       const picker = (key, label) => {
         if (parts.format === 'year') {
           const years = new Set(Array.from({ length: new Date().getFullYear() + 11 - 1900 }, (_, index) => String(1900 + index)));
           if (parts[key]) years.add(parts[key]);
-          return selectField(label, [['', 'Select year'], ...[...years].sort().reverse().map(year => [year, year])], parts[key], value => { parts[key] = value; commit(); });
+          const wrapper = selectField(label, [['', 'Select year'], ...[...years].sort().reverse().map(year => [year, year])], parts[key], value => { parts[key] = value; commit(); });
+          dateControls.push(wrapper.querySelector('select'));
+          return wrapper;
         }
         const wrapper = element('label', 'field');
         wrapper.append(element('span', 'field-label', label));
         const input = element('input'); input.type = 'month'; input.value = parts[key];
+        dateControls.push(input);
         input.min = '0001-01'; input.max = '9999-12';
         input.addEventListener('change', () => {
           if (!input.checkValidity()) {
             input.value = parts[key];
-            error.textContent = 'Enter a valid month and four-digit year. Your previous date has been kept.';
-            error.hidden = false; return;
+            showError('Enter a valid month and four-digit year. Your previous date has been kept.');
+            return;
           }
           parts[key] = input.value; commit();
         });
@@ -302,7 +328,7 @@ function updateChecks() {
       if (issue.field === 'dates') {
         const details = scope.querySelector('.optional-dates');
         if (issue.role !== undefined && details) details.open = true;
-        control = scope.querySelector('.date-fields input, .date-fields textarea, .date-fields select');
+        control = scope.querySelector('.date-fields [aria-invalid="true"]') || scope.querySelector('.date-fields input, .date-fields textarea, .date-fields select');
       } else control = scope.querySelector(`[name="${issue.field}"]`);
       control?.focus(); control?.scrollIntoView({ block: 'center' });
     })); return item;
@@ -345,7 +371,7 @@ function renderEditor() {
   if (step === 0) {
     const grid = element('div', 'field-grid');
     grid.append(
-      field(data, 'name', 'Full name & credentials', { wide: true, placeholder: 'Alex Morgan, MBA', autocomplete: 'name' }),
+      field(data, 'name', 'Full name & credentials', { wide: true, placeholder: 'Alex Morgan, MBA', autocomplete: 'name', required: true, hint: 'Required to download your document.' }),
       field(data, 'email', 'Email', { type: 'email', placeholder: 'alex@example.com', autocomplete: 'email' }),
       field(data, 'phone', 'Phone', { type: 'tel', placeholder: '(216) 555-0142', autocomplete: 'tel' }),
       field(data, 'location', 'Location', { placeholder: 'Cleveland, OH', autocomplete: 'address-level2' }),
@@ -434,7 +460,11 @@ function renderEditor() {
     addSchool.disabled = data.education.length >= 30; editor.append(addSchool);
   }
   if (step === 3 && !cv) {
-    editor.append(field(data, 'publications', 'Publications and patents', { multiline: true, rows: 8, placeholder: 'Author(s). Title. Publication or patent number. Year.', hint: 'One entry per line. Entries are numbered automatically.' }), field(data, 'skills', 'Technical expertise', { multiline: true, rows: 7, placeholder: 'Operations: Production planning, inventory management\nTools: Excel, Power BI, ERP systems', hint: 'One bullet per line. Group related skills if useful.' }));
+    editor.append(
+      field(data, 'publications', 'Publications', { multiline: true, rows: 8, placeholder: 'Author(s). Title. Publication. Year.', hint: 'One citation per line. Shared with your CV. If an older file includes patents here, move those entries to Patents.' }),
+      field(data.cv, 'patents', 'Patents', { multiline: true, rows: 5, placeholder: 'Inventor(s). Title. Patent number. Year and status.', hint: 'One patent per line. Included in both formats, after publications on your résumé and in a separate CV section.' }),
+      field(data, 'skills', 'Technical expertise', { multiline: true, rows: 7, placeholder: 'Operations: Production planning, inventory management\nTools: Excel, Power BI, ERP systems', hint: 'One bullet per line. Group related skills if useful.' }),
+    );
   }
   if (step === 3 && cv) {
     const academicField = (target, key, label, hint, rows = 5) => {
@@ -450,7 +480,7 @@ function renderEditor() {
       research: 'One project per line. Include your role, institution, dates, methods and outcomes.',
       teaching: 'One course or mentoring activity per line. Include institution, role and dates.',
       grants: 'One award per line. Include funder, project, dates, your role and amount if relevant.',
-      patents: 'One patent per line. Include inventors, title, patent number, year and status.',
+      patents: 'One patent per line. Include inventors, title, patent number, year and status. Included in both your résumé and CV.',
       presentations: 'One talk or poster per line. Include title, event, date and whether invited.',
       honors: 'One honor per line, with awarding organization and year.',
       service: 'One committee, editorial, reviewing or outreach role per line, with dates.',
@@ -458,7 +488,7 @@ function renderEditor() {
       references: 'One reference per line. Include name, title, institution and agreed contact details.',
     };
     for (const { key, label } of CV_SECTIONS) {
-      if (key === 'patents') academicField(data, 'publications', 'Publications', 'One complete citation per line, most recent first. Include publication status where relevant. Shared with the résumé publications field.', 8);
+      if (key === 'patents') academicField(data, 'publications', 'Publications', 'One complete citation per line, most recent first. Shared with your résumé. If an older file includes patents here, move those entries to Patents.', 8);
       if (key === 'references') academicField(data, 'skills', 'Research Skills', 'One skill group per line. Methods, tools and languages. Shared with résumé technical expertise.');
       academicField(data.cv, key, label, hints[key], key === 'researchInterests' ? 3 : 5);
     }
@@ -512,6 +542,8 @@ function changed() {
     if (data.education[index]) summary.textContent = educationSummary(data.education[index], index);
   });
   $('#download-pdf').disabled = true;
+  $('#open-pdf').disabled = true;
+  pdfBlob = undefined;
   $('#download-docx').disabled = !data.name.trim() || Boolean(resumeDateError());
   $('#preview').setAttribute('aria-busy', 'true');
   $('#preview-status').textContent = 'Updating preview…';
@@ -542,6 +574,8 @@ async function updatePreview() {
   rendering = true;
   const requestedRevision = revision;
   const snapshot = structuredClone(data);
+  $('#download-pdf').disabled = true;
+  $('#open-pdf').disabled = true;
   $('#download-docx').disabled = !snapshot.name.trim() || Boolean(resumeDateError());
   try {
     const dateIssue = resumeDateError();
@@ -558,6 +592,19 @@ async function updatePreview() {
     }
     const blocks = resumeBlocks(snapshot);
     $('#preview-text').replaceChildren(...blocks.map(block => element(block.kind === 'heading' ? 'h3' : 'p', '', block.text)));
+    if (!blocks.length) {
+      renderSequence++;
+      const previous = pdfDocument;
+      pdfDocument = undefined; pdfBlob = undefined; currentPage = 1;
+      $('#preview').replaceChildren(element('p', 'preview-placeholder preview-empty', `Your ${snapshot.mode === 'cv' ? 'CV' : 'résumé'} will appear here as you add details.`));
+      $('#preview-status').textContent = 'Add your details or try the example.';
+      $('#export-status').textContent = 'Enter your name to enable downloads.';
+      $('#preview').setAttribute('aria-busy', 'false');
+      $('#previous-page').disabled = true; $('#next-page').disabled = true;
+      $('#page-count').textContent = 'No pages yet';
+      if (previous) await previous.loadingTask.destroy();
+      return;
+    }
     const normalizedName = blocks.find(block => block.kind === 'name')?.text || '';
     const missing = unsupportedCharacters(blocks.map(block => block.text).join('\n') + normalizedName.toUpperCase());
     if (missing.length) {
@@ -574,7 +621,10 @@ async function updatePreview() {
       return;
     }
     // The preview and download share these exact PDF bytes.
-    const blob = await buildTaggedPdf(snapshot, await loadFonts());
+    const [pdfjs, { buildTaggedPdf }, fonts] = await Promise.all([import('pdfjs-dist'), import('./tagged-pdf.js'), loadFonts()]);
+    if (requestedRevision !== revision) return;
+    pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
+    const blob = await buildTaggedPdf(snapshot, fonts);
     const document = await pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), isEvalSupported: false }).promise;
     if (requestedRevision !== revision) { await document.loadingTask.destroy(); return; }
     const previous = pdfDocument;
@@ -584,10 +634,10 @@ async function updatePreview() {
     await showPage();
     if (previous) await previous.loadingTask.destroy();
     if (requestedRevision !== revision) return;
-    $('#preview-status').textContent = !blocks.length ? 'Add your details or try the example.' : !data.name.trim() ? 'Enter your name in Basics to enable downloads.' : 'Your PDF, exactly as it will download.';
-    if (!blocks.length) $('#preview').append(element('p', 'preview-placeholder preview-empty', `Your ${data.mode === 'cv' ? 'CV' : 'résumé'} will appear here as you add details.`));
+    $('#preview-status').textContent = !data.name.trim() ? 'Enter your name in Basics to enable downloads.' : 'Your PDF, exactly as it will download.';
     $('#preview').setAttribute('aria-busy', 'false');
     $('#download-pdf').disabled = !data.name.trim();
+    $('#open-pdf').disabled = !data.name.trim();
     $('#download-docx').disabled = !data.name.trim();
     $('#export-status').textContent = data.name.trim() ? '' : 'Enter your name to enable downloads.';
   } catch (error) {
@@ -615,6 +665,22 @@ function download(blob, extension, name, mode = data.mode) {
 
 $('#download-pdf').addEventListener('click', () => {
   if (pdfBlob) { download(pdfBlob, 'pdf', data.name); $('#export-status').textContent = 'PDF downloaded.'; }
+});
+$('#open-pdf').addEventListener('click', () => {
+  if (!pdfBlob || $('#open-pdf').disabled) return;
+  const viewer = window.open('about:blank', '_blank');
+  if (!viewer) {
+    $('#export-status').textContent = 'Your browser blocked the new tab. Allow pop-ups for this site, or use Download PDF to open the document.';
+    return;
+  }
+  viewer.opener = null;
+  const url = URL.createObjectURL(pdfBlob);
+  viewer.location.href = url;
+  // Keep this snapshot available while its viewer is open, even as the draft changes.
+  const cleanup = setInterval(() => {
+    if (viewer.closed) { URL.revokeObjectURL(url); clearInterval(cleanup); }
+  }, 1000);
+  $('#export-status').textContent = 'PDF opened in a new tab.';
 });
 $('#download-docx').addEventListener('click', async () => {
   const snapshot = structuredClone(data);

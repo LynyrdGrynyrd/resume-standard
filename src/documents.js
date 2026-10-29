@@ -58,7 +58,8 @@ export function resumeBlocks(data = {}) {
   } else {
     section('Professional Experience', experience);
     section('Academic Credentials', education);
-    section('Publications and Patents', publications);
+    section('Publications and Patents', [...publications,
+      ...lines(data.cv?.patents).map(value => ({ kind: 'publication', text: value }))]);
     section('Technical Expertise', skills);
   }
   return blocks;

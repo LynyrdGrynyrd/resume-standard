@@ -28,7 +28,8 @@ test('manual form preserves content in preview, PDF, DOCX, and reload; all reque
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (!/^(http:\/\/127\.0\.0\.1:4178|blob:|data:)/.test(request.url())) external.push(request.url()); });
   await page.goto('/');
-  await expect(page.locator('#preview canvas')).toBeVisible();
+  await expect(page.locator('.preview-empty')).toBeVisible();
+  await expect(page.locator('#preview canvas')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Download PDF' })).toBeDisabled();
   await page.getByLabel('Full name & credentials').fill('Renée García, Ph.D.');
   await page.getByLabel('Email', { exact: true }).fill('renee@example.com');
@@ -50,7 +51,7 @@ test('manual form preserves content in preview, PDF, DOCX, and reload; all reque
   await page.getByLabel('Degree type').selectOption('Ph.D.');
   await page.getByLabel('Field of study (optional)').fill('Chemistry');
   await page.getByRole('button', { name: '04 More' }).click();
-  await page.getByLabel('Publications and patents').fill('García, R. Polymer Research. 2025.');
+  await page.getByLabel('Publications').fill('García, R. Polymer Research. 2025.');
   await page.getByLabel('Technical expertise').fill('Synthesis\nStatistical analysis');
   await expect(page.getByRole('button', { name: 'Download PDF' })).toBeEnabled();
   await expect(page.locator('#preview-text')).toContainText('Mentored five scientists.');

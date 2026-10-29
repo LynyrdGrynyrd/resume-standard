@@ -6,7 +6,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { buildDocx, buildMarkdown, buildText, resumeBlocks } from '../src/documents.js';
 import { buildTaggedPdf } from '../src/tagged-pdf.js';
-import { exampleCv } from '../src/state.js';
+import { exampleCv, parseResumeFile, serializeResumeFile } from '../src/state.js';
 
 const headings = ['Profile', 'Education', 'Academic and Professional Appointments', 'Research Interests',
   'Research Experience', 'Teaching and Mentoring', 'Grants and Funding', 'Publications', 'Patents',
@@ -78,10 +78,58 @@ test('resume and CV PDF page streams contain balanced marked-content operators',
   }
 });
 
+test('shared patents survive both modes in actual PDF, Word, Markdown and text exports', async () => {
+  const data = exampleCv();
+  const publication = 'Lee, R. Reproducible methods. Example Journal. 2026.';
+  const patent = 'Lee, R. Testing fixture. Patent EX2026001. 2025.';
+  data.publications = publication;
+  data.cv.patents = patent;
+  for (const mode of ['resume', 'cv']) {
+    data.mode = mode;
+    const before = structuredClone(data), blocks = resumeBlocks(data);
+    const entries = blocks.filter(block => block.text === publication || block.text === patent);
+    assert.deepEqual(entries.map(block => block.text), [publication, patent]);
+    assert.deepEqual(entries.map(block => block.kind), mode === 'resume' ? ['publication', 'publication'] : ['publication', 'description']);
+    const plain = buildText(data), markdown = buildMarkdown(data);
+    assert.ok(plain.includes(mode === 'resume' ? `2) ${patent}` : `Patents\n\n${patent}`));
+    assert.ok(markdown.includes(mode === 'resume' ? `2. ${patent}` : `## Patents\n\n${patent}`));
+    assert.ok(plain.indexOf(publication) < plain.indexOf(patent));
+    const document = strFromU8((await wordFiles(data))['word/document.xml']);
+    assert.ok(document.includes(publication) && document.includes(patent));
+    assert.ok(document.indexOf(publication) < document.indexOf(patent));
+    const paragraphs = [...document.matchAll(/<w:p[ >][\s\S]*?<\/w:p>/g)].map(match => match[0]);
+    const patentParagraph = paragraphs.find(paragraph => paragraph.includes(patent));
+    assert.equal(patentParagraph.includes('<w:numPr>'), mode === 'resume', 'Patents use the combined numbering only in resume mode');
+    const pdf = await openPdf(data);
+    try {
+      let text = '';
+      for (let page = 1; page <= pdf.numPages; page++) text += (await (await pdf.getPage(page)).getTextContent()).items.map(item => item.str ?? '').join('');
+      const expected = mode === 'resume' ? `2) ${patent}` : `Patents${patent}`;
+      assert.ok(compact(text).includes(compact(expected)), `${mode} PDF must retain the shared patent with the correct label`);
+      assert.ok(compact(text).includes(compact(publication)), `${mode} PDF must retain the publication`);
+      assert.ok(compact(text).indexOf(compact(publication)) < compact(text).indexOf(compact(patent)));
+    } finally { await pdf.loadingTask.destroy(); }
+    assert.deepEqual(data, before, 'Export must not rewrite or move entries');
+  }
+});
+
+test('legacy mixed entries and version 2 backups preserve patent strings without classification or deduplication', () => {
+  const { mode, cv, ...legacy } = exampleCv();
+  legacy.publications = 'Article supplied exactly.\nPatent supplied exactly.';
+  const migrated = parseResumeFile(JSON.stringify({ format: 'classic-resume', version: 1, data: legacy }));
+  assert.equal(migrated.publications, legacy.publications);
+  assert.equal(migrated.cv.patents, '');
+  migrated.cv.patents = 'Patent supplied exactly.';
+  assert.deepEqual(resumeBlocks(migrated).filter(block => block.kind === 'publication').map(block => block.text), [
+    'Article supplied exactly.', 'Patent supplied exactly.', 'Patent supplied exactly.',
+  ]);
+  assert.deepEqual(parseResumeFile(serializeResumeFile(migrated)), migrated);
+});
+
 test('resume mode preserves legacy output and excludes every CV-only field', async () => {
   const data = exampleCv();
   data.mode = 'resume';
-  for (const key of Object.keys(data.cv)) data.cv[key] = `UNIQUE_CV_ONLY_${key}`;
+  for (const key of Object.keys(data.cv)) data.cv[key] = key === 'patents' ? '' : `UNIQUE_CV_ONLY_${key}`;
   const { mode, cv, ...legacy } = data;
   assert.deepEqual(resumeBlocks(data), resumeBlocks(legacy));
   assert.equal(buildText(data), buildText(legacy));
