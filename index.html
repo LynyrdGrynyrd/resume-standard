@@ -11,17 +11,15 @@
     <a href="#editor" class="skip-link">Skip to résumé form</a>
     <header class="app-header">
       <a class="brand" href="./" aria-label="Résumé Standard home">Résumé Standard<span class="brand-dot">.</span></a>
-      <span class="tagline">YOUR EXPERIENCE. WELL PRESENTED.</span>
-      <span class="privacy-note"><span class="status-dot"></span> Private by design</span>
+      <span class="privacy-note">Your details stay on this device</span>
     </header>
     <main>
       <div class="intro">
-        <div><p class="eyebrow">ONE TEMPLATE. YOUR STORY.</p><h1>A résumé that gets<br class="desktop-break" /> out of your way.</h1><p class="intro-copy">You bring the experience. We take care of the formatting.</p></div>
-        <div class="intro-aside"><span class="edition">THE CLASSIC FORMAT</span><p>Considered typography.<br>Clear hierarchy. Room for substance.</p></div>
+        <div><h1>Build your résumé.</h1><p class="intro-copy">Add your details, review the page, then download a PDF or Word document.</p></div>
       </div>
       <div class="workspace">
         <section class="editor-panel" aria-label="Résumé details">
-          <div class="panel-heading"><h2>Your details</h2><button id="example" class="text-button" type="button">Try an example <span aria-hidden="true">↗</span></button></div>
+          <div class="panel-heading"><h2>Your details</h2><div class="editor-tools"><button id="example" class="text-button" type="button">Try an example</button><a id="jump-preview" class="text-button" href="#preview-panel">Preview &amp; download ↓</a></div></div>
           <nav class="steps" aria-label="Résumé sections">
             <button type="button" data-step="0" aria-current="step"><span>01</span> Basics</button>
             <button type="button" data-step="1"><span>02</span> Experience</button>
@@ -32,17 +30,17 @@
           <div class="editor-navigation"><button id="back" class="text-button" type="button">← Back</button><button id="next" class="button secondary" type="button">Experience →</button></div>
           <div class="draft-controls">
             <div class="file-actions"><button id="save-file" type="button" class="button secondary">Save résumé file</button><button id="open-file" type="button" class="text-button">Open résumé file</button><input id="resume-file" type="file" accept=".json,application/json" hidden></div>
-            <p>Save a file to keep a backup or edit on another device. Open files made by this app.</p>
+            <p>This editable backup opens in Résumé Standard. For job applications, use the PDF or Word download.</p>
             <p id="file-status" role="status"></p>
             <label class="check-label"><input id="remember" type="checkbox" checked> Save my draft in this browser</label><p id="save-status" role="status">Your details stay on this device.</p><button id="clear" type="button" class="text-button muted">Clear draft</button>
           </div>
         </section>
-        <section class="preview-panel" aria-label="Résumé preview">
-          <div class="preview-toolbar"><div><span class="eyebrow">LIVE PREVIEW</span><p id="preview-status" role="status">Preparing your page…</p></div><span class="paper-size">US LETTER · 8.5 × 11″</span></div>
-          <div id="preview" aria-busy="true"><div class="preview-placeholder">Your next chapter starts here.</div></div>
+        <section id="preview-panel" class="preview-panel" aria-label="Résumé preview" tabindex="-1">
+          <div class="preview-toolbar"><div><h2>Preview &amp; download</h2><p id="preview-status" role="status">Preparing your page…</p></div><a id="back-to-editor" class="text-button" href="#editor">↑ Edit details</a></div>
+          <div id="preview" aria-busy="true"><div class="preview-placeholder">Preparing your résumé preview…</div></div>
           <div class="page-navigation"><button id="previous-page" type="button" class="icon-button" aria-label="Previous preview page" disabled>←</button><span id="page-count">Page 1</span><button id="next-page" type="button" class="icon-button" aria-label="Next preview page" disabled>→</button></div>
           <details class="download-check" id="download-check"><summary>Before you download <span id="check-count"></span></summary><p>Optional sections can stay empty. Review these details if they apply.</p><ul id="check-list"></ul></details>
-          <div class="download-bar"><div><strong>Ready when you are.</strong><span>Clean formatting. Your words.</span></div><div class="download-buttons"><button id="download-docx" class="button secondary" type="button" disabled>Word <span aria-hidden="true">↓</span></button><button id="download-pdf" class="button primary" type="button" disabled>Download PDF <span aria-hidden="true">↓</span></button></div></div>
+          <div class="download-bar"><div class="download-buttons"><button id="download-docx" class="button secondary" type="button" disabled>Word <span aria-hidden="true">↓</span></button><button id="download-pdf" class="button primary" type="button" disabled>Download PDF <span aria-hidden="true">↓</span></button></div></div>
           <p id="export-status" role="status" class="export-status"></p>
           <div class="text-exports" aria-label="Text formats"><button id="download-markdown" class="text-button" type="button">Markdown ↓</button><button id="download-text" class="text-button" type="button">Plain text ↓</button><button id="copy-text" class="text-button" type="button">Copy as text</button></div>
           <p id="text-export-status" class="export-status" role="status"></p>
@@ -51,7 +49,7 @@
         </section>
       </div>
     </main>
-    <footer><span>Layout inspired by Phil Costanzo’s résumé template.</span><span>Built around the details that matter.</span></footer>
+    <footer><span>Layout inspired by Phil Costanzo’s résumé template.</span></footer>
     <noscript>This résumé builder needs JavaScript to create your PDF and Word files. Your details are processed on your device.</noscript>
     <script type="module" src="/src/main.js"></script>
   </body>

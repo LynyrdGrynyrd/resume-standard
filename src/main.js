@@ -318,8 +318,8 @@ function entryActions(list, index, label) {
 function renderEditor() {
   const editor = $('#editor');
   editor.replaceChildren();
-  const titles = ['Start with the essentials.', 'Show what you’ve done.', 'Your academic foundation.', 'The details that set you apart.'];
-  const descriptions = ['Use the name and contact details you want on your résumé.', 'Add your employers, roles, and accomplishments. Most recent first.', 'Degrees, qualifications, and the details worth including.', 'These sections are optional. Empty sections stay off your résumé.'];
+  const titles = ['Contact details', 'Work experience', 'Education', 'Additional details'];
+  const descriptions = ['Your name is needed to download. Include the contact details you want employers to use.', 'Add your employers, roles, and accomplishments. Most recent first.', 'Add your degrees or qualifications. Leave this section empty if it does not apply.', 'These sections are optional. Empty sections stay off your résumé.'];
   editor.append(element('h3', '', titles[step]), element('p', 'section-description', descriptions[step]));
   if (step === 0) {
     const grid = element('div', 'field-grid');
@@ -329,7 +329,7 @@ function renderEditor() {
       field(data, 'phone', 'Phone', { type: 'tel', placeholder: '(216) 555-0142', autocomplete: 'tel' }),
       field(data, 'location', 'Location', { placeholder: 'Cleveland, OH', autocomplete: 'address-level2' }),
       field(data, 'website', 'LinkedIn or website', { placeholder: 'linkedin.com/in/your-name' }),
-      field(data, 'summary', 'Summary of qualifications', { wide: true, multiline: true, rows: 7, placeholder: 'Describe your experience, strengths, and the work you do best.', hint: 'Write in your own words. We’ll handle the formatting.' }),
+      field(data, 'summary', 'Summary of qualifications', { wide: true, multiline: true, rows: 7, placeholder: 'Describe your experience, strengths, and the work you do best.', hint: 'Optional. A short overview of your experience and strengths.' }),
     );
     editor.append(grid);
   }
@@ -385,8 +385,7 @@ function renderEditor() {
     else node.removeAttribute('aria-current');
   });
   $('#back').disabled = step === 0;
-  $('#next').hidden = step === 3;
-  $('#next').textContent = ['Experience →', 'Education →', 'More details →'][step] || '';
+  $('#next').textContent = ['Experience →', 'Education →', 'More details →', 'Review & download →'][step];
 }
 
 function draftConflict() {
@@ -468,7 +467,7 @@ async function updatePreview() {
       return;
     }
     const blocks = resumeBlocks(snapshot);
-    $('#preview-text').replaceChildren(...blocks.map(block => element(block.kind === 'heading' ? 'h4' : 'p', '', block.text)));
+    $('#preview-text').replaceChildren(...blocks.map(block => element(block.kind === 'heading' ? 'h3' : 'p', '', block.text)));
     const normalizedName = blocks.find(block => block.kind === 'name')?.text || '';
     const missing = unsupportedCharacters(blocks.map(block => block.text).join('\n') + normalizedName.toUpperCase());
     if (missing.length) {
@@ -495,7 +494,8 @@ async function updatePreview() {
     await showPage();
     if (previous) await previous.loadingTask.destroy();
     if (requestedRevision !== revision) return;
-    $('#preview-status').textContent = hasContent(data) ? 'This is your download, page for page.' : 'Add your details to make it yours.';
+    $('#preview-status').textContent = !hasContent(data) ? 'Add your details or try the example.' : !data.name.trim() ? 'Enter your name in Basics to enable downloads.' : 'Your PDF, exactly as it will download.';
+    if (!hasContent(data)) $('#preview').append(element('p', 'preview-placeholder preview-empty', 'Your résumé will appear here as you add details.'));
     $('#preview').setAttribute('aria-busy', 'false');
     $('#download-pdf').disabled = !data.name.trim();
     $('#download-docx').disabled = !data.name.trim();
@@ -523,7 +523,9 @@ function download(blob, extension, name) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
-$('#download-pdf').addEventListener('click', () => { if (pdfBlob) download(pdfBlob, 'pdf', data.name); });
+$('#download-pdf').addEventListener('click', () => {
+  if (pdfBlob) { download(pdfBlob, 'pdf', data.name); $('#export-status').textContent = 'PDF downloaded.'; }
+});
 $('#download-docx').addEventListener('click', async () => {
   const snapshot = structuredClone(data);
   const exportRevision = revision;
@@ -592,10 +594,18 @@ $('#resume-file').addEventListener('change', async event => {
   }
 });
 
-document.querySelectorAll('[data-step]').forEach(node => node.addEventListener('click', () => { step = Number(node.dataset.step); renderEditor(); }));
+function focusEditor() {
+  $('#editor').focus({ preventScroll: true });
+  $('#editor').scrollIntoView({ block: 'start' });
+}
+
+document.querySelectorAll('[data-step]').forEach(node => node.addEventListener('click', () => { step = Number(node.dataset.step); renderEditor(); focusEditor(); }));
 $('#editor').addEventListener('submit', event => event.preventDefault());
-$('#back').addEventListener('click', () => { step--; renderEditor(); $('#editor').focus(); });
-$('#next').addEventListener('click', () => { step++; renderEditor(); $('#editor').focus(); });
+$('#back').addEventListener('click', () => { step--; renderEditor(); focusEditor(); });
+$('#next').addEventListener('click', () => {
+  if (step === 3) { $('#preview-panel').focus({ preventScroll: true }); $('#preview-panel').scrollIntoView({ block: 'start' }); }
+  else { step++; renderEditor(); focusEditor(); }
+});
 $('#previous-page').addEventListener('click', () => { currentPage--; showPage().catch(console.error); });
 $('#next-page').addEventListener('click', () => { currentPage++; showPage().catch(console.error); });
 $('#example').addEventListener('click', () => {
